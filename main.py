@@ -44,12 +44,7 @@ async def analyze_frame(video: UploadFile = File(...), frames_per_second: int = 
                     detections.append({
                         "label": r.names[int(box.cls)],
                         "confidence": float(box.conf),
-                        "bbox": {
-                            "x": int(box.xyxy[0][0]),
-                            "y": int(box.xyxy[0][1]),
-                            "width": int(box.xyxy[0][2] - box.xyxy[0][0]),
-                            "height": int(box.xyxy[0][3] - box.xyxy[0][1])
-                        }
+                        "timestamp": video_cap.get(cv2.CAP_PROP_POS_MSEC)
                     })
 
         frame_index += 1
