@@ -3,3 +3,9 @@ fastapi
 opencv-python
 ultralytics==8.3.250
 python-multipart
+roboflow
+pytest
+pytest-asyncio
+httpx
+websockets
+python-dotenv
