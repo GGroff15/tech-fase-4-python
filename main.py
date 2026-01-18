@@ -1,7 +1,12 @@
-from fastapi import FastAPI
-from api import websocket as ws_router, health
+from api import health, server
+from aiohttp import web
 
-app = FastAPI()
+from utils.logging_config import configure_logging
 
-app.include_router(ws_router.router)
-app.include_router(health.router)
+configure_logging()
+
+app = web.Application()
+app.add_routes(health.router)
+app.add_routes(server.router)
+app.on_shutdown.append(server.on_shutdown)  # Register shutdown handler
+web.run_app(app, host="0.0.0.0", port=8000)

@@ -1,37 +1,44 @@
 from typing import Tuple
 import cv2
+import numpy as np
+
+# Constants
+MAX_WIDTH = 1280
+MAX_HEIGHT = 720
+DEFAULT_BLUR_THRESHOLD = 100.0
 
 
-def validate_resolution(img) -> bool:
+def validate_resolution(image: np.ndarray) -> bool:
     """Return True if image resolution is within allowed bounds (<=1280x720)."""
-    h, w = img.shape[:2]
-    return h <= 720 and w <= 1280
+    height, width = image.shape[:2]
+    return height <= MAX_HEIGHT and width <= MAX_WIDTH
 
 
-def get_resolution(img) -> Tuple[int, int]:
-    h, w = img.shape[:2]
-    return w, h
+def get_resolution(image: np.ndarray) -> Tuple[int, int]:
+    """Get image resolution as (width, height) tuple."""
+    height, width = image.shape[:2]
+    return width, height
 
 
-def estimate_blur_score(img) -> float:
+def estimate_blur_score(image: np.ndarray) -> float:
     """Estimate blur using variance of Laplacian. Higher is sharper.
 
     Returns a float where lower values indicate blurrier images.
     """
-    if img is None:
+    if image is None:
         return 0.0
     try:
-        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-        lap = cv2.Laplacian(gray, cv2.CV_64F)
-        var = float(lap.var())
-        return var
+        grayscale_image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+        laplacian = cv2.Laplacian(grayscale_image, cv2.CV_64F)
+        variance = float(laplacian.var())
+        return variance
     except Exception:
         return 0.0
 
 
-def is_blurry(img, threshold: float = 100.0) -> bool:
+def is_blurry(image: np.ndarray, threshold: float = DEFAULT_BLUR_THRESHOLD) -> bool:
     """Return True if image is considered blurry.
 
     Default threshold 100.0 is a reasonable starting point; tune per dataset.
     """
-    return estimate_blur_score(img) < threshold
+    return estimate_blur_score(image) < threshold

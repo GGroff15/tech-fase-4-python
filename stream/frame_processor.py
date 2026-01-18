@@ -1,7 +1,7 @@
 import asyncio
 import logging
 import time
-from typing import Callable, Any, List
+from typing import Callable, Any, List, Dict
 
 from preprocessing.frame_decoder import decode_image
 from preprocessing.validator import validate_resolution, is_blurry, estimate_blur_score
@@ -10,6 +10,10 @@ from inference.roboflow_client import infer_image
 from models.events import DetectionEvent, WoundModel
 
 logger = logging.getLogger("yolo_rest.frame_processor")
+
+# Constants
+DEFAULT_BLUR_THRESHOLD = 100.0
+QUALITY_WARNING_BLUR_FORMAT = "blurry:score={:.1f}"
 
 
 class FrameProcessor:
@@ -24,79 +28,110 @@ class FrameProcessor:
         self._task = None
         self._stop = False
 
-    def _convert_detections(self, detections: List[dict]) -> List[WoundModel]:
+    def _convert_detections(self, detections: List[Dict[str, Any]]) -> List[WoundModel]:
+        """Convert raw detection dictionaries to WoundModel objects."""
         wounds: List[WoundModel] = []
-        for d in detections:
-            try:
-                w = WoundModel(
-                    id=int(d.get("id", 0)),
-                    cls=str(d.get("cls", "unknown")),
-                    bbox=[float(x) for x in d.get("bbox", [0, 0, 0, 0])],
-                    confidence=float(d.get("confidence", 0.0)),
-                    type_confidence=float(d.get("type_confidence", 0.0)),
-                )
-                wounds.append(w)
-            except Exception:
-                logger.exception("invalid_detection_format")
+        for detection in detections:
+            wound = self._create_wound_from_detection(detection)
+            if wound:
+                wounds.append(wound)
         return wounds
 
-    async def _run(self, emitter: Callable[[dict], Any]):
+    def _create_wound_from_detection(self, detection: Dict[str, Any]) -> WoundModel | None:
+        """Create a single WoundModel from a detection dictionary."""
+        try:
+            return WoundModel(
+                id=int(detection.get("id", 0)),
+                cls=str(detection.get("cls", "unknown")),
+                bbox=[float(x) for x in detection.get("bbox", [0, 0, 0, 0])],
+                confidence=float(detection.get("confidence", 0.0)),
+                type_confidence=float(detection.get("type_confidence", 0.0)),
+            )
+        except (ValueError, TypeError) as error:
+            logger.warning(f"invalid_detection_format: {error}", extra={"detection": detection})
+            return None
+
+    async def _run(self, emitter: Callable[[Dict[str, Any]], Any]) -> None:
+        """Main processing loop that handles frames from the buffer."""
         while not self._stop:
             frame = await self.frame_buffer.get()
-            try:
-                img = decode_image(frame)
-                quality_warning = None
-                if not validate_resolution(img):
-                    img = resize_to_720p(img)
+            await self._process_single_frame(frame, emitter)
 
-                # Quality checks
-                blur_score = estimate_blur_score(img)
-                if is_blurry(img):
-                    quality_warning = f"blurry:score={blur_score:.1f}"
+    async def _process_single_frame(self, frame: Any, emitter: Callable[[Dict[str, Any]], Any]) -> None:
+        """Process a single frame through the detection pipeline."""
+        try:
+            image = decode_image(frame)
+            prepared_image = self._prepare_image(image)
+            quality_warning = self._check_image_quality(prepared_image)
+            detections = await infer_image(prepared_image)
+            await self._emit_detection_event(detections, quality_warning, emitter)
+        except Exception as error:
+            await self._handle_processing_error(error, emitter)
 
-                # Call inference
-                detections = await infer_image(img)
+    def _prepare_image(self, image: Any) -> Any:
+        """Prepare image by validating and resizing if necessary."""
+        if not validate_resolution(image):
+            return resize_to_720p(image)
+        return image
 
-                wounds = self._convert_detections(detections)
+    def _check_image_quality(self, image: Any) -> str | None:
+        """Check image quality and return warning message if needed."""
+        blur_score = estimate_blur_score(image)
+        if is_blurry(image):
+            return QUALITY_WARNING_BLUR_FORMAT.format(blur_score)
+        return None
 
-                # record detections count
-                if len(wounds) > 0:
-                    try:
-                        self.session.record_detection(len(wounds))
-                    except Exception:
-                        pass
+    async def _emit_detection_event(
+        self, 
+        detections: List[Dict[str, Any]], 
+        quality_warning: str | None, 
+        emitter: Callable[[Dict[str, Any]], Any]
+    ) -> None:
+        """Convert detections to event and emit to client."""
+        wounds = self._convert_detections(detections)
 
-                event_model = DetectionEvent(
-                    session_id=self.session.session_id,
-                    timestamp_ms=int(time.time() * 1000),
-                    frame_index=self.session.frame_count,
-                    has_wounds=len(wounds) > 0,
-                    wounds=wounds,
-                    metadata={"quality_warning": quality_warning, "processing_time_ms": None},
-                )
+        self._record_detections(wounds)
+        event = self._create_detection_event(wounds, quality_warning)
+        self.session.record_frame()
+        await self._emit_event(event, emitter)
 
-                # record and emit (include processing_time)
-                self.session.record_frame()
-                try:
-                    # fill processing time metadata
-                    event = event_model.model_dump()
-                    event.setdefault("metadata", {})["processing_time_ms"] = 0
-                    await emitter(event)
-                except Exception:
-                    logger.exception("emit_failed")
+    def _record_detections(self, wounds: List[WoundModel]) -> None:
+        """Record detection count in session."""
+        if wounds:
+            self.session.record_detection(len(wounds))
 
-            except Exception as e:
-                logger.exception("frame_processing_error")
-                # send a minimal error event
-                try:
-                    await emitter({
-                        "session_id": self.session.session_id,
-                        "error": str(e),
-                    })
-                except Exception:
-                    logger.exception("emitter_failed")
+    def _create_detection_event(self, wounds: List[WoundModel], quality_warning: str | None) -> Dict[str, Any]:
+        """Create a detection event from wounds and metadata."""
+        event_model = DetectionEvent(
+            session_id=self.session.session_id,
+            timestamp_ms=int(time.time() * 1000),
+            frame_index=self.session.frame_count,
+            has_wounds=len(wounds) > 0,
+            wounds=wounds,
+            metadata={"quality_warning": quality_warning, "processing_time_ms": 0},
+        )
+        return event_model.model_dump()
 
-    def start(self, emitter: Callable[[dict], Any]):
+    async def _emit_event(self, event: Dict[str, Any], emitter: Callable[[Dict[str, Any]], Any]) -> None:
+        """Emit event to client with error handling."""
+        try:
+            await emitter(event)
+        except Exception as error:
+            logger.error(f"emit_failed: {error}", extra={"session_id": self.session.session_id})
+
+    async def _handle_processing_error(self, error: Exception, emitter: Callable[[Dict[str, Any]], Any]) -> None:
+        """Handle frame processing errors by logging and emitting error event."""
+        logger.error(f"frame_processing_error: {error}", extra={"session_id": self.session.session_id})
+        error_event = {
+            "session_id": self.session.session_id,
+            "error": str(error),
+        }
+        try:
+            await emitter(error_event)
+        except Exception as emit_error:
+            logger.error(f"emitter_failed: {emit_error}", extra={"session_id": self.session.session_id})
+
+    def start(self, emitter: Callable[[dict[str, Any]], Any]):
         if self._task is None:
             self._task = asyncio.create_task(self._run(emitter))
 
