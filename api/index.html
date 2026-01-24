@@ -1,72 +1,36 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>WebRTC Video Sender</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
 <body>
-    <h1>WebRTC Video Sender</h1>
-    <video id="localVideo" autoplay muted width="640" height="480"></video>
-    <p id="status">Initializing...</p>
- 
-    <script>
-        const statusEl = document.getElementById("status");
-        
-        // Configure peer connection (use Google's STUN server for NAT traversal)
-        const pc = new RTCPeerConnection({
-            iceServers: [{ urls: "stun:stun.l.google.com:19302" }]
-        });
+    <main class="app-container">
+        <header class="hero">
+            <h1>WebRTC Video Sender</h1>
+            <p class="lead">Stream your camera to the server and receive realtime detections.</p>
+        </header>
 
-        const detectionChannel = pc.createDataChannel("detections");
+        <section class="panel">
+            <div id="controls" class="controls">
+                <button id="btnToggleVideo" class="btn primary">Stop Video</button>
+                <button id="btnToggleAudio" class="btn">Stop Audio</button>
+                <button id="btnToggleAll" class="btn ghost">Stop All</button>
+            </div>
 
-        detectionChannel.onopen = () => {
-            console.log("Detection channel opened");
-            statusEl.textContent = "Connected - streaming video";
-        };
+            <div class="media">
+                <video id="localVideo" autoplay muted playsinline class="preview" width="640" height="480"></video>
+                <audio id="remoteAudio" autoplay></audio>
+            </div>
 
-        detectionChannel.onmessage = (event) => {
-            console.log("Detection data received:", event.data);
-        };
- 
-        // Access webcam, add track, THEN create offer
-        navigator.mediaDevices.getUserMedia({ video: true })
-            .then(stream => {
-                console.log("Got media stream");
-                statusEl.textContent = "Camera accessed, connecting...";
-                document.getElementById("localVideo").srcObject = stream;
-                
-                // Add all tracks to peer connection
-                stream.getTracks().forEach(track => {
-                    console.log("Adding track:", track.kind);
-                    pc.addTrack(track, stream);
-                });
-                
-                // NOW create the offer (after tracks are added)
-                return pc.createOffer();
-            })
-            .then(offer => {
-                console.log("Offer created");
-                return pc.setLocalDescription(offer);
-            })
-            .then(() => {
-                console.log("Sending offer to server");
-                return fetch("/offer", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({
-                        sdp: pc.localDescription.sdp,
-                        type: pc.localDescription.type
-                    })
-                });
-            })
-            .then(response => response.json())
-            .then(answer => {
-                console.log("Received answer from server");
-                return pc.setRemoteDescription(new RTCSessionDescription(answer));
-            })
-            .then(() => {
-                console.log("Connection established");
-            })
-            .catch(error => {
-                console.error("Error:", error);
-                statusEl.textContent = "Error: " + error.message;
-            });
-    </script>
+            <p id="status" class="status">Initializing...</p>
+        </section>
+
+        <footer class="attribution">Built with &hearts; — yolo-rest demo</footer>
+    </main>
+
+    <script src="webrtc-client.js" defer></script>
 </body>
 </html>

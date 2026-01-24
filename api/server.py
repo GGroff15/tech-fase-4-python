@@ -148,6 +148,37 @@ async def index(request):
     with open("api/index.html", "r") as f:
         return web.Response(content_type="text/html", text=f.read())
 
+
+@router.get('/webrtc-client.js')
+async def webrtc_client_js(request):
+    """Serve the external WebRTC client JavaScript file."""
+    try:
+        with open("api/webrtc-client.js", "r", encoding="utf-8") as f:
+            return web.Response(content_type="application/javascript", text=f.read())
+    except FileNotFoundError:
+        return web.Response(status=404, text="// webrtc-client.js not found")
+
+
+@router.get('/styles.css')
+async def styles_css(request):
+    """Serve the page stylesheet."""
+    try:
+        with open("api/styles.css", "r", encoding="utf-8") as f:
+            return web.Response(content_type="text/css", text=f.read())
+    except FileNotFoundError:
+        return web.Response(status=404, text="/* styles.css not found */")
+
+
+@router.get('/favicon.ico')
+async def favicon(request):
+    """Serve favicon if present (returns 404 if missing)."""
+    try:
+        with open("api/favicon.ico", "rb") as f:
+            data = f.read()
+            return web.Response(body=data, content_type="image/x-icon")
+    except FileNotFoundError:
+        return web.Response(status=404, text="")
+
 @router.post("/offer")
 async def offer(request: web.Request) -> web.Response:
     """Handle WebRTC offer and create peer connection."""
