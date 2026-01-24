@@ -12,3 +12,5 @@ python-dotenv
 aiortc 
 aiohttp
 aiohttp-devtools
+transformers
+torch

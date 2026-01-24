@@ -10,6 +10,7 @@ from audio.audio_analysis import analyze_audio
 from stream.frame_buffer import BaseBuffer
 from stream.session import StreamSession
 from stream.frame_processor import BaseProcessor
+from audio.ser import predict_emotion
 
 logger = logging.getLogger("yolo_rest.audio_processor")
 
@@ -127,6 +128,29 @@ class AudioProcessor(BaseProcessor):
             audio_seconds = total_bytes / (sample_rate * channels * bytes_per_sample)
 
             result = analyze_audio(tmp_path)
+
+            # Run speech-emotion recognition (SER) if available. This uses a
+            # lazy-loaded HF pipeline in audio.ser and is safe to call here
+            # because _process_window_sync runs in a thread via asyncio.to_thread.
+            try:
+                emotion = predict_emotion(tmp_path)
+            except Exception as e:
+                logger.debug(f"predict_emotion failed: {e}")
+                emotion = None
+
+            if emotion:
+                # merge into existing analysis dict to preserve contract
+                try:
+                    result["emotion"] = emotion
+                except Exception:
+                    # if result isn't a dict, wrap it
+                    result = {"result": result, "emotion": emotion}
+            else:
+                # include a stable key even if model isn't available
+                try:
+                    result.setdefault("emotion", {"label": None, "score": 0.0})
+                except Exception:
+                    result = {"result": result, "emotion": {"label": None, "score": 0.0}}
 
             return result, audio_seconds, len(wav_chunks)
         finally:
