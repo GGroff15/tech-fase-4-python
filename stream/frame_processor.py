@@ -2,12 +2,15 @@ import asyncio
 import logging
 import time
 from typing import Callable, Any, List, Dict
+from abc import ABC, abstractmethod
 
 from preprocessing.frame_decoder import decode_image
 from preprocessing.validator import validate_resolution, is_blurry, estimate_blur_score
 from preprocessing.resizer import resize_to_720p
 from inference.roboflow_client import infer_image
 from models.events import DetectionEvent, WoundModel
+from stream.frame_buffer import BaseBuffer
+from stream.session import StreamSession
 
 logger = logging.getLogger("yolo_rest.frame_processor")
 
@@ -16,7 +19,38 @@ DEFAULT_BLUR_THRESHOLD = 100.0
 QUALITY_WARNING_BLUR_FORMAT = "blurry:score={:.1f}"
 
 
-class FrameProcessor:
+class BaseProcessor(ABC):
+    """Abstract base class for processors handling media buffers.
+
+    Subclasses must implement `_run(self, emitter)` as the main async loop.
+    This base provides `start` and `stop` lifecycle management to keep
+    implementations consistent between video and audio processors.
+    """
+
+    def __init__(self, frame_buffer: BaseBuffer, session: StreamSession):
+        self.frame_buffer: BaseBuffer = frame_buffer
+        self.session: StreamSession = session
+        self._task = None
+        self._stop = False
+
+    @abstractmethod
+    async def _run(self, emitter: Callable[[Dict[str, Any]], Any]) -> None:
+        raise NotImplementedError()
+
+    def start(self, emitter: Callable[[Dict[str, Any]], Any]):
+        if self._task is None:
+            self._task = asyncio.create_task(self._run(emitter))
+
+    async def stop(self):
+        self._stop = True
+        if self._task:
+            self._task.cancel()
+            try:
+                await self._task
+            except asyncio.CancelledError:
+                pass
+
+class VideoProcessor(BaseProcessor):
     """Processes frames from a FrameBuffer and emits detection events via an emitter.
 
     Emitter must be an async callable that accepts a single dict (the event JSON).
@@ -131,15 +165,4 @@ class FrameProcessor:
         except Exception as emit_error:
             logger.error(f"emitter_failed: {emit_error}", extra={"session_id": self.session.session_id})
 
-    def start(self, emitter: Callable[[dict[str, Any]], Any]):
-        if self._task is None:
-            self._task = asyncio.create_task(self._run(emitter))
-
-    async def stop(self):
-        self._stop = True
-        if self._task:
-            self._task.cancel()
-            try:
-                await self._task
-            except asyncio.CancelledError:
-                pass
+    # lifecycle (start/stop) inherited from BaseProcessor

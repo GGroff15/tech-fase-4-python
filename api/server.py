@@ -7,8 +7,9 @@ from aiohttp import web
 from aiortc import MediaStreamTrack, RTCPeerConnection, RTCSessionDescription
 from aiortc.contrib.media import MediaRelay
 
-from stream.frame_buffer import FrameBuffer
-from stream.frame_processor import FrameProcessor
+from stream.frame_buffer import BaseBuffer, FrameBuffer, AudioBuffer
+from stream.frame_processor import BaseProcessor, VideoProcessor
+from stream.audio_processor import AudioProcessor
 from stream.session import StreamSession
 
 logger = logging.getLogger("yolo_rest.server")
@@ -31,7 +32,7 @@ class WebRTCConnectionHandler:
         self.peer_connection = peer_connection
         self.data_channel: Optional[Any] = None
         self.session: StreamSession = StreamSession()
-        self.processor: Optional[FrameProcessor] = None
+        self.processor: Optional[BaseProcessor] = None
 
     def setup_data_channel_handler(self) -> None:
         """Configure data channel event handler."""
@@ -52,8 +53,14 @@ class WebRTCConnectionHandler:
 
     def _handle_track(self, original_track: MediaStreamTrack, local_track: MediaStreamTrack) -> None:
         """Initialize session and start frame processing for a track."""
-        buffer = FrameBuffer()
-        self.processor = FrameProcessor(buffer, self.session)
+        # Route by track kind: use a specialized buffer/processor for audio
+        if getattr(local_track, "kind", None) == "audio":
+            logger.info("Starting audio processor for audio track")
+            buffer = AudioBuffer()
+            self.processor = AudioProcessor(buffer, self.session)
+        else:
+            buffer = FrameBuffer()
+            self.processor = VideoProcessor(buffer, self.session)
 
         async def emitter(event: dict[str, Any]) -> None:
             await self._emit_event(event)
@@ -91,7 +98,7 @@ class WebRTCConnectionHandler:
             }
             self.data_channel.send(json.dumps(init_event))
 
-    async def _buffer_frames(self, track: MediaStreamTrack, buffer: FrameBuffer) -> None:
+    async def _buffer_frames(self, track: MediaStreamTrack, buffer: BaseBuffer) -> None:
         """Read frames from track and add to buffer."""
         try:
             while True:

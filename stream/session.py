@@ -20,6 +20,9 @@ class StreamSession:
         self.end_time = None
         # Frames processed (keeps previous semantics)
         self.frame_count = 0
+        # Audio-specific counters
+        self.audio_frame_count = 0
+        self.audio_seconds = 0.0
         # Total frames received from client
         self.total_received = 0
         # Frames dropped due to buffer replacement
@@ -32,6 +35,15 @@ class StreamSession:
 
     def record_frame(self) -> None:
         self.frame_count += 1
+        self.last_activity = time.time()
+
+    def record_audio(self, frames: int = 1, seconds: float = 0.0) -> None:
+        """Record audio frames/seconds received and touch last activity."""
+        self.audio_frame_count += frames
+        try:
+            self.audio_seconds += float(seconds)
+        except Exception:
+            pass
         self.last_activity = time.time()
 
     def record_received(self) -> None:
@@ -55,6 +67,8 @@ class StreamSession:
             "start_time": int(self.start_time * 1000),
             "end_time": int(self.end_time * 1000),
             "frame_count": self.frame_count,
+            "audio_frame_count": self.audio_frame_count,
+            "audio_seconds": self.audio_seconds,
         }
         logger.info("session.closed", extra=summary)
         return summary
