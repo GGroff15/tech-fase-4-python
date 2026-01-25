@@ -1,3 +1,105 @@
+# Copilot instructions — yolo-rest
+
+Real-time wound detection API using WebRTC, YOLOv8, and async Python. Accepts video/audio streams and emits detection events via WebRTC data channels.
+
+## Quick start
+```powershell
+# Setup venv and dependencies
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+
+# Run server (aiohttp + aiortc)
+python main.py  # Listens on 0.0.0.0:8000
+
+# Test
+pytest -q  # asyncio_mode=auto in pytest.ini
+```
+
+## Architecture (WebRTC-based streaming)
+- **Entry**: `main.py` → `api/server.py` (aiohttp web app)
+- **WebRTC**: Client sends offer to `POST /offer`, server returns SDP answer. Video/audio tracks flow via `aiortc.RTCPeerConnection`
+- **Processing pipeline**: `MediaStreamTrack` → `stream/frame_buffer.py` (single-slot async queue) → `stream/frame_processor.py` (BaseProcessor subclasses) → inference → emit detection events via WebRTC data channel
+- **Inference**: `inference/roboflow_client.py` (HTTP to Roboflow) with local `inference/fallback.py` (Ultralytics YOLOv8) when Roboflow unavailable
+- **Session lifecycle**: `stream/session.py` tracks frame counts, idle timeouts, and metrics per connection
+
+### Key flow (video)
+1. Client establishes WebRTC peer connection and sends video track
+2. `api/server.py:WebRTCConnectionHandler._handle_track()` creates `FrameBuffer` + `VideoProcessor`
+3. `VideoProcessor._run()` loop: decode JPEG frames, validate/resize, call `infer_image()`, emit `DetectionEvent` JSON via data channel
+4. Audio tracks route to `AudioProcessor` (emotion detection via transformers)
+
+## Project-specific patterns
+- **Async buffer pattern**: All buffers inherit `stream/frame_buffer.py:BaseBuffer` (abstract `put`/`get`/`empty`). `FrameBuffer` uses size-1 queue; new frames drop old ones (backpressure handling)
+- **Processor lifecycle**: `BaseProcessor.start(emitter)` spawns asyncio task running `_run()`. Always call `stop()` to cancel task
+- **Logging**: Use `logger = logging.getLogger("yolo_rest.<module>")` namespace. Config in `utils/logging_config.py`
+- **Constants**: All magic numbers in `config/constants.py` (MAX_IMAGE_WIDTH, DEFAULT_CONFIDENCE_THRESHOLD, etc.)
+- **Env vars**: Load from `.env` via `os.getenv()`. See `.github/instructions/env-file.instructions.md`. Key vars: `ROBOFLOW_API_KEY`, `ROBOFLOW_MODEL_URL`, `USE_GPU`, `LOCAL_YOLO_MODEL_PATH`
+- **Testing**: Use `conftest.py` fixtures (`jpeg_bytes`, `dummy_image`). Tests are async-friendly (`pytest.ini` sets `asyncio_mode=auto`)
+
+## Critical files by layer
+- **API/WebRTC**: `api/server.py` (WebRTCConnectionHandler, route handlers), `api/health.py` (health check)
+- **Stream control**: `stream/frame_buffer.py` (BaseBuffer, FrameBuffer, AudioBuffer), `stream/frame_processor.py` (VideoProcessor, AudioProcessor), `stream/session.py` (StreamSession)
+- **Preprocessing**: `preprocessing/frame_decoder.py` (decode_image), `preprocessing/resizer.py` (resize_to_720p), `preprocessing/validator.py` (blur detection)
+- **Inference**: `inference/roboflow_client.py` (RoboflowConfig, infer_image), `inference/fallback.py` (LocalYoloFallback)
+- **Models**: `models/detection.py` (Wound, WoundDetection dataclasses), `models/events.py` (for event schemas)
+- **Utils**: `utils/emitter.py` (safe_emit, DataChannelWrapper), `utils/loader.py` (LazyModelLoader for deferred Ultralytics import)
+
+## Common tasks
+**Add a new processor**:
+1. Subclass `stream/frame_processor.py:BaseProcessor`
+2. Implement `async _run(self, emitter)` — loop over `self.frame_buffer.get()`, process, call `await safe_emit(emitter, event)`
+3. Wire in `api/server.py:_handle_track()` by track kind
+
+**Change inference backend**:
+- Edit `inference/roboflow_client.py:infer_image()` or swap `LocalYoloFallback` in `fallback.py`
+- Update `config/constants.py` for confidence thresholds
+
+**Adjust buffer size**:
+- Set `FRAME_BUFFER_MAX_SIZE` in `config/constants.py` (currently 1 = drop-replace strategy)
+
+## Testing & validation
+```powershell
+# Unit tests (fast, no I/O)
+pytest tests/unit/ -v
+
+# Integration tests (require model files)
+pytest tests/integration/ -v
+
+# Run server and test WebRTC via browser
+python main.py
+# Open http://localhost:8000 (index.html serves webrtc-client.js)
+```
+
+**Key test examples**:
+- `tests/unit/test_frame_buffer.py` — verify drop-replace behavior
+- `tests/integration/test_local_fallback.py` — smoke test LocalYoloFallback with dummy image
+
+## Dependencies & environment
+- **Core**: `aiohttp` (web server), `aiortc` (WebRTC), `ultralytics` (YOLOv8), `opencv-python` (frame decoding)
+- **ML**: `torch`, `transformers` (audio emotion detection)
+- **Optional**: `roboflow` (cloud inference), `python-dotenv` (env loading)
+- **Dev**: `pytest`, `pytest-asyncio`, `httpx` (test client)
+- **Model weights**: `yolov8n.pt`, `yolov8s.pt` (repo root), custom weights in `runs/detect/train2/weights/best.pt`
+
+## Common pitfalls
+- **Blocking in async**: Never do sync I/O in `_run()` loops (VideoProcessor/AudioProcessor). Use `asyncio.to_thread()` for CPU-bound ops
+- **Data channel timing**: DataChannelWrapper checks `readyState` before sending. Wait for `DATA_CHANNEL_INIT_DELAY` after track establishment
+- **Inference failures**: `infer_image()` returns empty list on error/fallback failure. Handle gracefully
+- **Model loading**: `LazyModelLoader` defers `ultralytics` import until first use (avoids startup cost). Don't construct YOLO directly
+
+## Editing checklist
+- [ ] Read related files in same module before editing (e.g., read `frame_buffer.py` before editing `frame_processor.py`)
+- [ ] Update `config/constants.py` if adding configurable thresholds
+- [ ] Add/update tests in `tests/unit/` or `tests/integration/`
+- [ ] Verify `pytest -q` passes locally
+- [ ] Check `ruff check .` (linting/formatting)
+- [ ] Never commit `.env` or secrets — use `.env.example` for docs
+
+## References
+- **WebRTC flow**: `docs/flows/webrtc-session-establishment.md`, `docs/flows/video-frame-processing-pipeline.md`
+- **Inference logic**: `docs/flows/inference-fallback-handling.md`, `docs/flows/wound-detection-and-alert-generation.md`
+- **Quickstart**: `quickstart.md` (detailed setup with examples)
 # Project purpose
 
 This document describes the purpose and high-level design of the yolo-rest project.
