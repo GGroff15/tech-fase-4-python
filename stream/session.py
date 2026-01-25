@@ -1,6 +1,6 @@
+import logging
 import time
 import uuid
-import logging
 from typing import Optional
 
 logger = logging.getLogger("yolo_rest.session")

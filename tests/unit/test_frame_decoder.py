@@ -6,7 +6,7 @@ from preprocessing.frame_decoder import decode_image
 
 def make_jpeg_bytes():
     img = np.zeros((100, 200, 3), dtype=np.uint8)
-    _, buf = cv2.imencode('.jpg', img)
+    _, buf = cv2.imencode(".jpg", img)
     return buf.tobytes()
 
 

@@ -1,6 +1,6 @@
-from av import VideoFrame
 import cv2
 import numpy as np
+from av import VideoFrame
 
 
 def decode_image(frame: VideoFrame | bytes) -> np.ndarray:

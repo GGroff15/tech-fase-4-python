@@ -1,6 +1,6 @@
+import logging
 import tempfile
 import wave
-import logging
 from typing import Tuple
 
 logger = logging.getLogger("yolo_rest.audio_decoder")

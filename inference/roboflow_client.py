@@ -1,28 +1,33 @@
+import asyncio
 import os
-from typing import List, Dict, Any, Optional
+from typing import Any, Dict, List, Optional
 
 import cv2
-import asyncio
-import numpy as np
 import httpx
+import numpy as np
 
+from config.constants import DEFAULT_ROBOFLOW_CONFIDENCE as DEFAULT_CONFIDENCE
+from config.constants import DEFAULT_USE_LOCAL_FALLBACK, IMAGE_ENCODING_FORMAT
+from config.constants import ROBOFLOW_HTTP_TIMEOUT_SEC as DEFAULT_HTTP_TIMEOUT
 from inference.fallback import LocalYoloFallback
-
-# Constants
-DEFAULT_CONFIDENCE = 0.5
-DEFAULT_HTTP_TIMEOUT = 10.0
-IMAGE_ENCODING_FORMAT = ".jpg"
-DEFAULT_USE_LOCAL_FALLBACK = "true"
 
 
 class RoboflowConfig:
     """Configuration for Roboflow inference client."""
 
-    def __init__(self, model_url: Optional[str] = None, api_key: Optional[str] = None, confidence: float = DEFAULT_CONFIDENCE):
+    def __init__(
+        self,
+        model_url: Optional[str] = None,
+        api_key: Optional[str] = None,
+        confidence: float = DEFAULT_CONFIDENCE,
+    ):
         self.model_url = model_url or os.getenv("ROBOFLOW_MODEL_URL")
         self.api_key = api_key or os.getenv("ROBOFLOW_API_KEY")
         self.confidence = float(os.getenv("ROBOFLOW_CONFIDENCE", str(confidence)))
-        self.use_local_fallback = os.getenv("ROBOFLOW_USE_LOCAL_FALLBACK", DEFAULT_USE_LOCAL_FALLBACK).lower() == "true"
+        self.use_local_fallback = (
+            os.getenv("ROBOFLOW_USE_LOCAL_FALLBACK", DEFAULT_USE_LOCAL_FALLBACK).lower()
+            == "true"
+        )
 
     def is_configured(self) -> bool:
         """Check if Roboflow API is properly configured."""
@@ -30,10 +35,7 @@ class RoboflowConfig:
 
     def get_request_params(self) -> Dict[str, Any]:
         """Get HTTP request parameters for Roboflow API."""
-        return {
-            "api_key": self.api_key,
-            "confidence": int(self.confidence * 100)
-        }
+        return {"api_key": self.api_key, "confidence": int(self.confidence * 100)}
 
 
 class ImageEncoder:
@@ -62,7 +64,9 @@ class DetectionParser:
         return predictions
 
     @staticmethod
-    def _parse_single_prediction(prediction: Dict[str, Any], detection_id: int) -> Dict[str, Any]:
+    def _parse_single_prediction(
+        prediction: Dict[str, Any], detection_id: int
+    ) -> Dict[str, Any]:
         """Parse a single prediction into standard format."""
         bbox = DetectionParser._extract_bbox(prediction)
         class_name = DetectionParser._extract_class_name(prediction)
@@ -87,13 +91,18 @@ class DetectionParser:
             prediction.get("x"),
             prediction.get("y"),
             prediction.get("width"),
-            prediction.get("height")
+            prediction.get("height"),
         ]
 
     @staticmethod
     def _extract_class_name(prediction: Dict[str, Any]) -> str:
         """Extract class name from prediction."""
-        return prediction.get("class") or prediction.get("cls") or prediction.get("label") or "unknown"
+        return (
+            prediction.get("class")
+            or prediction.get("cls")
+            or prediction.get("label")
+            or "unknown"
+        )
 
 
 class MockDetectionGenerator:
@@ -118,13 +127,15 @@ class MockDetectionGenerator:
         x = max(0, center_x - bbox_width / 2)
         y = max(0, center_y - bbox_height / 2)
 
-        return [{
-            "id": 1,
-            "cls": "cut",
-            "bbox": [float(x), float(y), float(bbox_width), float(bbox_height)],
-            "confidence": 0.75,
-            "type_confidence": 0.6,
-        }]
+        return [
+            {
+                "id": 1,
+                "cls": "cut",
+                "bbox": [float(x), float(y), float(bbox_width), float(bbox_height)],
+                "confidence": 0.75,
+                "type_confidence": 0.6,
+            }
+        ]
 
 
 class RoboflowClient:
@@ -137,7 +148,12 @@ class RoboflowClient:
     - ROBOFLOW_USE_LOCAL_FALLBACK (true/false, default true)
     """
 
-    def __init__(self, model_url: Optional[str] = None, api_key: Optional[str] = None, confidence: float = DEFAULT_CONFIDENCE):
+    def __init__(
+        self,
+        model_url: Optional[str] = None,
+        api_key: Optional[str] = None,
+        confidence: float = DEFAULT_CONFIDENCE,
+    ):
         self.config = RoboflowConfig(model_url, api_key, confidence)
         self._client: Optional[httpx.AsyncClient] = None
         self._fallback: Optional[LocalYoloFallback] = None
@@ -168,7 +184,7 @@ class RoboflowClient:
             response = await self._client.post(
                 self.config.model_url,
                 files={"file": image_bytes},
-                params=self.config.get_request_params()
+                params=self.config.get_request_params(),
             )
             response.raise_for_status()
             return DetectionParser.parse_predictions(response.json())
@@ -184,7 +200,9 @@ class RoboflowClient:
 
         return await MockDetectionGenerator.generate(image)
 
-    async def _try_local_fallback(self, image: np.ndarray) -> List[Dict[str, Any]] | None:
+    async def _try_local_fallback(
+        self, image: np.ndarray
+    ) -> List[Dict[str, Any]] | None:
         """Try to use local YOLO fallback."""
         try:
             if self._fallback is None:

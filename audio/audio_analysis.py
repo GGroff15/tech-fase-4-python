@@ -1,13 +1,12 @@
+import os
+
 import librosa
 import numpy as np
-import os
+
 
 def analyze_audio(audio_path):
     if not os.path.exists(audio_path):
-        return {
-            "error": "Arquivo de áudio não encontrado",
-            "risk_score": 0.0
-        }
+        return {"error": "Arquivo de áudio não encontrado", "risk_score": 0.0}
 
     y, sr = librosa.load(audio_path, sr=None)
 
@@ -20,5 +19,5 @@ def analyze_audio(audio_path):
     return {
         "mfcc_mean": mfcc_mean.tolist(),
         "energy": float(energy),
-        "risk_score": risk_score
+        "risk_score": risk_score,
     }

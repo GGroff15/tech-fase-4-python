@@ -1,11 +1,11 @@
 from typing import Tuple
+
 import cv2
 import numpy as np
 
-# Constants
-MAX_WIDTH = 1280
-MAX_HEIGHT = 720
-DEFAULT_BLUR_THRESHOLD = 100.0
+from config.constants import DEFAULT_BLUR_THRESHOLD
+from config.constants import MAX_IMAGE_HEIGHT as MAX_HEIGHT
+from config.constants import MAX_IMAGE_WIDTH as MAX_WIDTH
 
 
 def validate_resolution(image: np.ndarray) -> bool:

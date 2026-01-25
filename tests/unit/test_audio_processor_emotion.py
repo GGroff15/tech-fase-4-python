@@ -1,9 +1,10 @@
 import asyncio
+
 import pytest
 
+from stream.audio_processor import AudioProcessor
 from stream.frame_buffer import AudioBuffer
 from stream.session import StreamSession
-from stream.audio_processor import AudioProcessor
 
 
 @pytest.mark.asyncio

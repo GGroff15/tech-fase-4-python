@@ -1,5 +1,6 @@
-from aiohttp import web
 import os
+
+from aiohttp import web
 
 router = web.RouteTableDef()
 
@@ -7,6 +8,7 @@ router = web.RouteTableDef()
 @router.get("/health")
 async def health(request):
     return web.json_response({"status": "ok"})
+
 
 @router.get("/ready")
 async def ready(request):

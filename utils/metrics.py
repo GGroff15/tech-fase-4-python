@@ -25,3 +25,11 @@ def get_timings(name: str):
 
 def time_ms() -> float:
     return time.time() * 1000.0
+
+
+def timestamp_ms() -> int:
+    """Return current time as integer milliseconds since epoch.
+
+    Use this helper where integer epoch-ms values are required by events/logs.
+    """
+    return int(time.time() * 1000)

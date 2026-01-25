@@ -1,11 +1,11 @@
 import asyncio
+from abc import ABC, abstractmethod
 from typing import Any
+
 from av import Packet
 from av.frame import Frame
-from abc import ABC, abstractmethod
 
-# Constants
-BUFFER_MAX_SIZE = 1
+from config.constants import FRAME_BUFFER_MAX_SIZE
 
 
 class BaseBuffer(ABC):
@@ -27,6 +27,28 @@ class BaseBuffer(ABC):
     def empty(self) -> bool:
         """Return True if the buffer is empty."""
 
+    async def _put_with_drop_oldest(self, queue: asyncio.Queue, frame: Any) -> bool:
+        """Helper: put `frame` into `queue`, dropping the oldest item if full.
+
+        Returns True if an existing item was dropped.
+        """
+        was_dropped = False
+        if queue.full():
+            try:
+                _ = queue.get_nowait()
+                # increment dropped_count if present on self
+                if hasattr(self, "dropped_count"):
+                    try:
+                        self.dropped_count += 1
+                    except Exception:
+                        # defensive: if attribute exists but is not int, ignore
+                        pass
+                was_dropped = True
+            except asyncio.QueueEmpty:
+                pass
+        await queue.put(frame)
+        return was_dropped
+
 
 class FrameBuffer(BaseBuffer):
     """A simple async frame buffer with drop-replace behavior.
@@ -37,7 +59,7 @@ class FrameBuffer(BaseBuffer):
     """
 
     def __init__(self) -> None:
-        self._queue: asyncio.Queue = asyncio.Queue(maxsize=BUFFER_MAX_SIZE)
+        self._queue: asyncio.Queue = asyncio.Queue(maxsize=FRAME_BUFFER_MAX_SIZE)
         self.dropped_count: int = 0
 
     async def put(self, frame: Frame | Packet | bytes) -> bool:
@@ -45,16 +67,7 @@ class FrameBuffer(BaseBuffer):
 
         Returns True if an existing frame was dropped, False otherwise.
         """
-        was_dropped = False
-        if self._queue.full():
-            try:
-                _ = self._queue.get_nowait()
-                self.dropped_count += 1
-                was_dropped = True
-            except asyncio.QueueEmpty:
-                pass
-        await self._queue.put(frame)
-        return was_dropped
+        return await self._put_with_drop_oldest(self._queue, frame)
 
     async def get(self) -> Frame | Packet | bytes:
         """Get the most recent frame (blocks until available)."""
@@ -83,16 +96,7 @@ class AudioBuffer(BaseBuffer):
 
         Returns True if an existing frame was dropped, False otherwise.
         """
-        was_dropped = False
-        if self._queue.full():
-            try:
-                _ = self._queue.get_nowait()
-                self.dropped_count += 1
-                was_dropped = True
-            except asyncio.QueueEmpty:
-                pass
-        await self._queue.put(frame)
-        return was_dropped
+        return await self._put_with_drop_oldest(self._queue, frame)
 
     async def get(self):
         """Get a single frame (await until available)."""

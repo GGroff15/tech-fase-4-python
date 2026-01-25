@@ -1,9 +1,9 @@
-import pytest
-import numpy as np
 import cv2
+import numpy as np
+import pytest
 
-from preprocessing.validator import validate_resolution
 from preprocessing.resizer import resize_to_720p
+from preprocessing.validator import validate_resolution
 
 
 def make_image(h, w):

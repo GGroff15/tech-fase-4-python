@@ -11,8 +11,10 @@ Run with the project's virtualenv to ensure correct deps. Example:
 
 This prints p50/p95 latency and throughput per simulated stream.
 """
-import sys
+
 import pathlib
+import sys
+
 # ensure repo root is first on sys.path so local packages import correctly
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
@@ -23,9 +25,9 @@ from statistics import median, quantiles
 
 import numpy as np
 
+from inference.roboflow_client import infer_image
 from preprocessing.resizer import resize_to_720p
 from preprocessing.validator import validate_resolution
-from inference.roboflow_client import infer_image
 
 
 async def process_single_frame(img: np.ndarray) -> float:
@@ -81,7 +83,7 @@ async def run_concurrent(streams: int = 5, frames_per_stream: int = 20):
 
     print(f"Streams: {streams}, frames/stream: {frames_per_stream}")
     print(f"Total frames: {len(flat)}, total_time_ms: {total_ms:.1f}")
-    print(f"Throughput fps (approx): {len(flat) / (total_ms/1000.0):.1f}")
+    print(f"Throughput fps (approx): {len(flat) / (total_ms / 1000.0):.1f}")
     print(f"p50 latency ms: {pctile(50):.1f}")
     print(f"p95 latency ms: {pctile(95):.1f}")
 

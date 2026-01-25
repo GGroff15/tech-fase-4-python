@@ -1,4 +1,5 @@
 import sys
+
 from ultralytics import YOLO
 
 model = YOLO("")
@@ -9,8 +10,10 @@ results = model(input_path, conf=conf)
 for result in results:
     print(f"Frame: {getattr(result, 'frame', 'N/A')}")
     for box in result.boxes:
-        print({
-            "class": int(box.cls[0]),
-            "confidence": float(box.conf[0]),
-            "bbox": box.xyxy[0].tolist()
-        })
+        print(
+            {
+                "class": int(box.cls[0]),
+                "confidence": float(box.conf[0]),
+                "bbox": box.xyxy[0].tolist(),
+            }
+        )

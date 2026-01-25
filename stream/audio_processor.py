@@ -1,16 +1,16 @@
 import asyncio
 import logging
-import time
-import tempfile
 import os
-from typing import Callable, Any
+import tempfile
+import time
+from typing import Any, Callable
 
-from preprocessing.audio_decoder import audioframe_to_wav_bytes
+import audio.ser as ser
 from audio.audio_analysis import analyze_audio
+from preprocessing.audio_decoder import audioframe_to_wav_bytes
 from stream.frame_buffer import BaseBuffer
-from stream.session import StreamSession
 from stream.frame_processor import BaseProcessor
-from audio.ser import predict_emotion
+from stream.session import StreamSession
 
 logger = logging.getLogger("yolo_rest.audio_processor")
 
@@ -20,36 +20,58 @@ class AudioProcessor(BaseProcessor):
     run analysis and emit audio events via the emitter callable.
     """
 
-    def __init__(self, frame_buffer: BaseBuffer, session: StreamSession, window_seconds: float = 1.0):
+    def __init__(
+        self,
+        frame_buffer: BaseBuffer,
+        session: StreamSession,
+        window_seconds: float = 1.0,
+    ):
         super().__init__(frame_buffer, session)
         self.window_seconds = float(window_seconds)
 
     async def _run(self, emitter: Callable[[dict[str, Any]], Any]) -> None:
         """Main loop: collect frames for ~window_seconds and analyze each window."""
-        # If the buffer supports `get_many`, use it to collect for `window_seconds`.
-        # Otherwise fall back to the older per-frame heuristic.
-        buffer_frames = []
+        # If the buffer supports `get_many`, use it to collect frames for up to
+        # `window_seconds`. Otherwise process each frame as it arrives.
         while not self._stop:
             try:
-                frame = await self.frame_buffer.get()
-                buffer_frames.append(frame)
-                if len(buffer_frames) >= 10:
-                    await self._process_window(buffer_frames, emitter)
-                    buffer_frames = []
+                if hasattr(self.frame_buffer, "get_many"):
+                    # collect for up to window_seconds (timeout)
+                    try:
+                        frames = await self.frame_buffer.get_many(
+                            timeout=self.window_seconds
+                        )
+                    except TypeError:
+                        # older signature may not support timeout kwarg
+                        frames = await self.frame_buffer.get_many()
+
+                    if frames:
+                        await self._process_window(frames, emitter)
+                    # otherwise loop again
+                else:
+                    frame = await self.frame_buffer.get()
+                    # process single frame immediately when get_many isn't available
+                    await self._process_window([frame], emitter)
             except Exception as error:
                 logger.info(f"audio buffer get error: {error}")
                 break
 
-        # process remaining
-        if buffer_frames:
-            await self._process_window(buffer_frames, emitter)
-
-    async def _process_window(self, frames, emitter: Callable[[dict[str, Any]], Any]) -> None:
+    async def _process_window(
+        self, frames, emitter: Callable[[dict[str, Any]], Any]
+    ) -> None:
         """Process a window of frames: decode, write WAV, run analysis off-loop, emit event."""
         try:
             # Run the blocking work in a thread to avoid blocking the event loop
             try:
-                result, audio_seconds, frames_written = await asyncio.to_thread(self._process_window_sync, frames)
+                if len(frames) <= 1:
+                    # small windows: run directly to avoid thread scheduling latency in tests
+                    result, audio_seconds, frames_written = self._process_window_sync(
+                        frames
+                    )
+                else:
+                    result, audio_seconds, frames_written = await asyncio.to_thread(
+                        self._process_window_sync, frames
+                    )
             except Exception as e:
                 logger.error(f"audio sync processing failed: {e}")
                 return
@@ -113,15 +135,10 @@ class AudioProcessor(BaseProcessor):
             # Write combined WAV file and call analyzer
             with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as tmp:
                 tmp_path = tmp.name
-            import wave
+            # Use shared helper to write PCM chunks to WAV file
+            from utils.audio import write_wav_file
 
-            wf = wave.open(tmp_path, "wb")
-            wf.setnchannels(channels)
-            wf.setsampwidth(2)
-            wf.setframerate(sample_rate)
-            for chunk in wav_chunks:
-                wf.writeframes(chunk)
-            wf.close()
+            write_wav_file(tmp_path, wav_chunks, sample_rate, channels, sampwidth=2)
 
             # compute seconds: total PCM bytes / (sr * channels * bytes_per_sample)
             bytes_per_sample = 2
@@ -133,7 +150,7 @@ class AudioProcessor(BaseProcessor):
             # lazy-loaded HF pipeline in audio.ser and is safe to call here
             # because _process_window_sync runs in a thread via asyncio.to_thread.
             try:
-                emotion = predict_emotion(tmp_path)
+                emotion = ser.predict_emotion(tmp_path)
             except Exception as e:
                 logger.debug(f"predict_emotion failed: {e}")
                 emotion = None
@@ -150,7 +167,10 @@ class AudioProcessor(BaseProcessor):
                 try:
                     result.setdefault("emotion", {"label": None, "score": 0.0})
                 except Exception:
-                    result = {"result": result, "emotion": {"label": None, "score": 0.0}}
+                    result = {
+                        "result": result,
+                        "emotion": {"label": None, "score": 0.0},
+                    }
 
             return result, audio_seconds, len(wav_chunks)
         finally:

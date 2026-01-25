@@ -1,22 +1,24 @@
 import asyncio
 import logging
 import time
-from typing import Callable, Any, List, Dict
 from abc import ABC, abstractmethod
+from typing import Any, Callable, Dict, List
 
-from preprocessing.frame_decoder import decode_image
-from preprocessing.validator import validate_resolution, is_blurry, estimate_blur_score
-from preprocessing.resizer import resize_to_720p
+from config.constants import (DEFAULT_BLUR_THRESHOLD,
+                              QUALITY_WARNING_BLUR_FORMAT)
 from inference.roboflow_client import infer_image
 from models.events import DetectionEvent, WoundModel
+from preprocessing.frame_decoder import decode_image
+from preprocessing.resizer import resize_to_720p
+from preprocessing.validator import (estimate_blur_score, is_blurry,
+                                     validate_resolution)
 from stream.frame_buffer import BaseBuffer
 from stream.session import StreamSession
+from utils.emitter import safe_emit
 
 logger = logging.getLogger("yolo_rest.frame_processor")
 
-# Constants
-DEFAULT_BLUR_THRESHOLD = 100.0
-QUALITY_WARNING_BLUR_FORMAT = "blurry:score={:.1f}"
+# NOTE: thresholds and formats are centralized in config.constants
 
 
 class BaseProcessor(ABC):
@@ -50,6 +52,7 @@ class BaseProcessor(ABC):
             except asyncio.CancelledError:
                 pass
 
+
 class VideoProcessor(BaseProcessor):
     """Processes frames from a FrameBuffer and emits detection events via an emitter.
 
@@ -71,7 +74,9 @@ class VideoProcessor(BaseProcessor):
                 wounds.append(wound)
         return wounds
 
-    def _create_wound_from_detection(self, detection: Dict[str, Any]) -> WoundModel | None:
+    def _create_wound_from_detection(
+        self, detection: Dict[str, Any]
+    ) -> WoundModel | None:
         """Create a single WoundModel from a detection dictionary."""
         try:
             return WoundModel(
@@ -82,7 +87,9 @@ class VideoProcessor(BaseProcessor):
                 type_confidence=float(detection.get("type_confidence", 0.0)),
             )
         except (ValueError, TypeError) as error:
-            logger.warning(f"invalid_detection_format: {error}", extra={"detection": detection})
+            logger.warning(
+                f"invalid_detection_format: {error}", extra={"detection": detection}
+            )
             return None
 
     async def _run(self, emitter: Callable[[Dict[str, Any]], Any]) -> None:
@@ -91,7 +98,9 @@ class VideoProcessor(BaseProcessor):
             frame = await self.frame_buffer.get()
             await self._process_single_frame(frame, emitter)
 
-    async def _process_single_frame(self, frame: Any, emitter: Callable[[Dict[str, Any]], Any]) -> None:
+    async def _process_single_frame(
+        self, frame: Any, emitter: Callable[[Dict[str, Any]], Any]
+    ) -> None:
         """Process a single frame through the detection pipeline."""
         try:
             image = decode_image(frame)
@@ -116,10 +125,10 @@ class VideoProcessor(BaseProcessor):
         return None
 
     async def _emit_detection_event(
-        self, 
-        detections: List[Dict[str, Any]], 
-        quality_warning: str | None, 
-        emitter: Callable[[Dict[str, Any]], Any]
+        self,
+        detections: List[Dict[str, Any]],
+        quality_warning: str | None,
+        emitter: Callable[[Dict[str, Any]], Any],
     ) -> None:
         """Convert detections to event and emit to client."""
         wounds = self._convert_detections(detections)
@@ -134,7 +143,9 @@ class VideoProcessor(BaseProcessor):
         if wounds:
             self.session.record_detection(len(wounds))
 
-    def _create_detection_event(self, wounds: List[WoundModel], quality_warning: str | None) -> Dict[str, Any]:
+    def _create_detection_event(
+        self, wounds: List[WoundModel], quality_warning: str | None
+    ) -> Dict[str, Any]:
         """Create a detection event from wounds and metadata."""
         event_model = DetectionEvent(
             session_id=self.session.session_id,
@@ -146,23 +157,24 @@ class VideoProcessor(BaseProcessor):
         )
         return event_model.model_dump()
 
-    async def _emit_event(self, event: Dict[str, Any], emitter: Callable[[Dict[str, Any]], Any]) -> None:
+    async def _emit_event(
+        self, event: Dict[str, Any], emitter: Callable[[Dict[str, Any]], Any]
+    ) -> None:
         """Emit event to client with error handling."""
-        try:
-            await emitter(event)
-        except Exception as error:
-            logger.error(f"emit_failed: {error}", extra={"session_id": self.session.session_id})
+        await safe_emit(emitter, event, logger, self.session.session_id)
 
-    async def _handle_processing_error(self, error: Exception, emitter: Callable[[Dict[str, Any]], Any]) -> None:
+    async def _handle_processing_error(
+        self, error: Exception, emitter: Callable[[Dict[str, Any]], Any]
+    ) -> None:
         """Handle frame processing errors by logging and emitting error event."""
-        logger.error(f"frame_processing_error: {error}", extra={"session_id": self.session.session_id})
+        logger.error(
+            f"frame_processing_error: {error}",
+            extra={"session_id": self.session.session_id},
+        )
         error_event = {
             "session_id": self.session.session_id,
             "error": str(error),
         }
-        try:
-            await emitter(error_event)
-        except Exception as emit_error:
-            logger.error(f"emitter_failed: {emit_error}", extra={"session_id": self.session.session_id})
+        await safe_emit(emitter, error_event, logger, self.session.session_id)
 
     # lifecycle (start/stop) inherited from BaseProcessor

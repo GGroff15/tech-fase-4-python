@@ -1,9 +1,22 @@
 import tempfile
 
 import cv2
-from ultralytics import YOLO
 
-model = YOLO("yolov8n.pt")
+from utils.loader import LazyModelLoader
+
+
+# Lazy load the ultralytics YOLO model if available
+def _make_yolo():
+    try:
+        from ultralytics import YOLO
+
+        return YOLO("yolov8n.pt")
+    except Exception:
+        return None
+
+
+_yolo_loader = LazyModelLoader(_make_yolo, name="video_yolo")
+
 
 async def analyze_video(video, frames_per_second: int):
     video_bytes = await video.read()
@@ -29,19 +42,26 @@ async def analyze_video(video, frames_per_second: int):
     frame_index = 0
     detections = []
 
+    model = _yolo_loader.get()
     while True:
         ret, frame = video_cap.read()
         if not ret:
             break
 
         if frame_index % frame_interval == 0:
+            if model is None:
+                # no local model available
+                frame_index += 1
+                continue
             for r in model.predict(source=frame, stream=True):
                 for box in r.boxes:
-                    detections.append({
-                        "label": r.names[int(box.cls)],
-                        "confidence": float(box.conf),
-                        "timestamp": video_cap.get(cv2.CAP_PROP_POS_MSEC)
-                    })
+                    detections.append(
+                        {
+                            "label": r.names[int(box.cls)],
+                            "confidence": float(box.conf),
+                            "timestamp": video_cap.get(cv2.CAP_PROP_POS_MSEC),
+                        }
+                    )
 
         frame_index += 1
 

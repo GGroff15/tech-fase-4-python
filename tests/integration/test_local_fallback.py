@@ -1,4 +1,5 @@
 import os
+
 import numpy as np
 
 from inference.roboflow_client import infer_image

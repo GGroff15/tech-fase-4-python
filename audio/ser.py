@@ -1,34 +1,33 @@
 import logging
-from typing import Any, Optional, Dict
-from transformers import pipeline
+from typing import Any, Dict, Optional
 
-_pipeline = None
+from utils.loader import LazyModelLoader, get_torch_device
+
 _logger = logging.getLogger("yolo_rest.audio.ser")
 
 
-def _get_pipeline():
-    global _pipeline
-    if _pipeline is not None:
-        return _pipeline
-
-    device = 0 if (hasattr(__import__("torch"), "cuda") and __import__("torch").cuda.is_available()) else -1
-
+def _make_pipeline():
     try:
-        _pipeline = pipeline(
+        from transformers import pipeline
+
+        device = get_torch_device()
+        return pipeline(
             task="audio-classification",
             model="superb/wav2vec2-base-superb-er",
             device=device,
         )
     except Exception as e:
         _logger.error("failed loading SER pipeline: %s", e)
-        _pipeline = None
+        return None
 
-    return _pipeline
+
+# Lazy loader for the SER pipeline; loading attempted on first use.
+_pipeline_loader = LazyModelLoader(_make_pipeline, name="ser_pipeline")
 
 
 def predict_emotion(wav_path: str) -> Optional[Dict[str, Any]]:
     """Return {'label': str, 'score': float} or None on failure/not-available."""
-    p = _get_pipeline()
+    p = _pipeline_loader.get()
     if p is None:
         return None
 
