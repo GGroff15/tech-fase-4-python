@@ -1,5 +1,4 @@
 import asyncio
-import json
 import logging
 from time import time
 from typing import Any, Optional
@@ -7,14 +6,24 @@ from typing import Any, Optional
 from aiohttp import web
 from aiortc import MediaStreamTrack, RTCPeerConnection, RTCSessionDescription
 from aiortc.contrib.media import MediaRelay
+from av.frame import Frame
 
-from config.constants import (DATA_CHANNEL_INIT_DELAY_SEC,
-                              DEFAULT_CONFIDENCE_THRESHOLD,
-                              DEFAULT_IDLE_TIMEOUT_SEC,
-                              DETECTIONS_CHANNEL_LABEL, MAX_IMAGE_HEIGHT,
-                              MAX_IMAGE_WIDTH)
+from config.constants import (
+    DATA_CHANNEL_INIT_DELAY_SEC,
+    DEFAULT_CONFIDENCE_THRESHOLD,
+    DEFAULT_IDLE_TIMEOUT_SEC,
+    DETECTIONS_CHANNEL_LABEL,
+    MAX_IMAGE_HEIGHT,
+    MAX_IMAGE_WIDTH,
+)
 from stream.audio_processor import AudioProcessor
-from stream.frame_buffer import AudioBuffer, BaseBuffer, FrameBuffer
+from stream.frame_buffer import (
+    AudioBufferBroadcast,
+    AudioEmotionBuffer,
+    BaseBuffer,
+    SpeechToTextBuffer,
+    VideoBuffer,
+)
 from stream.frame_processor import BaseProcessor, VideoProcessor
 from stream.session import StreamSession
 from utils.emitter import DataChannelWrapper
@@ -64,14 +73,21 @@ class WebRTCConnectionHandler:
         self, original_track: MediaStreamTrack, local_track: MediaStreamTrack
     ) -> None:
         """Initialize session and start frame processing for a track."""
-        # Route by track kind: use a specialized buffer/processor for audio
         if getattr(local_track, "kind", None) == "audio":
             logger.info("Starting audio processor for audio track")
-            buffer = AudioBuffer()
-            self.processor = AudioProcessor(buffer, self.session)
+
+            audio_emotion_buffer = AudioEmotionBuffer(maxsize=1024)
+            speech_to_text_buffer = SpeechToTextBuffer(maxsize=1024)
+            buffer = AudioBufferBroadcast(
+                buffers=[audio_emotion_buffer, speech_to_text_buffer]
+            )
+            self.processor = AudioProcessor(
+                self.session, audio_emotion_buffer, speech_to_text_buffer
+            )
         else:
-            buffer = FrameBuffer()
-            self.processor = VideoProcessor(buffer, self.session)
+            logger.info("Starting video processor for video track")
+            buffer = VideoBuffer()
+            self.processor = VideoProcessor(self.session, buffer)
 
         async def emitter(event: dict[str, Any]) -> None:
             await self._emit_event(event)
@@ -116,7 +132,8 @@ class WebRTCConnectionHandler:
         try:
             while True:
                 frame = await track.recv()
-                await buffer.put(frame)
+                if isinstance(frame, Frame):
+                    await buffer.put(frame)
         except Exception as error:
             logger.info(f"Track ended or error: {error}")
 
@@ -128,7 +145,7 @@ class WebRTCConnectionHandler:
 
         summary = self.session.close()
 
-        if self.data_channel and self.data_channel.readyState == "open":
+        if self.data_channel and self.data_channel.is_open():
             summary_event = {
                 "event_type": "stream_closed",
                 "session_id": self.session.session_id,

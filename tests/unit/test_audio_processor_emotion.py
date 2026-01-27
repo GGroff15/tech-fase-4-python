@@ -2,7 +2,7 @@ import asyncio
 
 import pytest
 
-from stream.audio_processor import AudioProcessor
+from stream.audio_processor import AudioEmotionProcessor
 from stream.frame_buffer import AudioBuffer
 from stream.session import StreamSession
 
@@ -39,7 +39,7 @@ async def test_audio_processor_emits_emotion(monkeypatch):
     # Put a single frame (the fake decoder will provide 1s of PCM)
     await buf.put("frame-1")
 
-    proc = AudioProcessor(buf, session, window_seconds=1.0)
+    proc = AudioEmotionProcessor(buf, session, window_seconds=1.0)
     proc.start(emitter)
 
     # Give the processor a short moment to process

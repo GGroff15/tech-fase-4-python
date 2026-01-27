@@ -4,15 +4,14 @@ import time
 from abc import ABC, abstractmethod
 from typing import Any, Callable, Dict, List
 
-from config.constants import (DEFAULT_BLUR_THRESHOLD,
-                              QUALITY_WARNING_BLUR_FORMAT)
+from config.constants import (QUALITY_WARNING_BLUR_FORMAT)
 from inference.roboflow_client import infer_image
 from models.events import DetectionEvent, WoundModel
 from preprocessing.frame_decoder import decode_image
 from preprocessing.resizer import resize_to_720p
 from preprocessing.validator import (estimate_blur_score, is_blurry,
                                      validate_resolution)
-from stream.frame_buffer import BaseBuffer
+from stream.frame_buffer import VideoBuffer
 from stream.session import StreamSession
 from utils.emitter import safe_emit
 
@@ -29,8 +28,7 @@ class BaseProcessor(ABC):
     implementations consistent between video and audio processors.
     """
 
-    def __init__(self, frame_buffer: BaseBuffer, session: StreamSession):
-        self.frame_buffer: BaseBuffer = frame_buffer
+    def __init__(self, session: StreamSession):
         self.session: StreamSession = session
         self._task = None
         self._stop = False
@@ -59,7 +57,7 @@ class VideoProcessor(BaseProcessor):
     Emitter must be an async callable that accepts a single dict (the event JSON).
     """
 
-    def __init__(self, frame_buffer, session):
+    def __init__(self, session: StreamSession, frame_buffer: VideoBuffer):
         self.frame_buffer = frame_buffer
         self.session = session
         self._task = None

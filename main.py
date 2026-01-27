@@ -1,9 +1,9 @@
-from aiohttp import web
-
-from api import health, server
 from utils.logging_config import configure_logging
 
 configure_logging()
+
+from aiohttp import web
+from api import health, server
 
 app = web.Application()
 app.add_routes(health.router)

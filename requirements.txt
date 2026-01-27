@@ -14,3 +14,4 @@ aiohttp
 aiohttp-devtools
 transformers
 torch
+vosk

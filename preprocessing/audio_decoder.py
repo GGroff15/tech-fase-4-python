@@ -3,56 +3,80 @@ import tempfile
 import wave
 from typing import Tuple
 
+import numpy as np
+from av import AudioFrame
+from scipy.io import wavfile
+from scipy.signal import resample
+
 logger = logging.getLogger("yolo_rest.audio_decoder")
 
+def audioframe_to_pcm_bytes(frames: list[AudioFrame]) -> Tuple[bytes, float]:
+    frame_bytes = []
+    sample_rate = 0
+    sample_width = 0
+    
+    duration_seconds = 0.0
+    
+    for frame in frames:
+        frame_bytes.append(frame.to_ndarray().tobytes())
+        sample_rate = frame.sample_rate
+        sample_width = frame.format.bytes
+        duration_seconds += frame.samples / frame.sample_rate
+        
+    with tempfile.NamedTemporaryFile(prefix="original_", suffix=".wav", delete=False) as tmp_original_wav:
+        with wave.open(tmp_original_wav, "wb") as wav:
+            wav.setnchannels(2)
+            wav.setsampwidth(sample_width)
+            wav.setframerate(sample_rate)
+            wav.writeframes(b"".join(frame_bytes))
+        
+    sample_rate_original, data = wavfile.read(tmp_original_wav.name)
+    
+    if data.ndim > 1:
+        data = data[:, 0]
+        
+    num_samples_16k = int(len(data) * 16000 / sample_rate_original)
+    
+    data_16k = resample(data, num_samples_16k)
+    
+    with tempfile.NamedTemporaryFile(prefix="resampled_", suffix=".wav", delete=False) as temporary_resampled_wav:
+        wavfile.write(temporary_resampled_wav.name, 16000, data_16k.astype(np.int16))
+    
+    with open(temporary_resampled_wav.name, "rb") as f:
+            data = f.read()
+    
+    return data, duration_seconds
 
-def audioframe_to_wav_bytes(frame) -> Tuple[bytes, int, int]:
-    """Convert a raw audio frame (aiortc/av.AudioFrame-like) to WAV bytes.
-
-    Returns a tuple of (wav_bytes, sample_rate, channels).
-    This is best-effort: it attempts to read common attributes from the frame.
-    """
-    # Attempt to extract common attributes
-    sample_rate = getattr(frame, "sample_rate", getattr(frame, "rate", 48000))
-    channels = getattr(frame, "channels", getattr(frame, "layout", None))
-    if isinstance(channels, int):
-        ch = channels
-    else:
-        # layout like "stereo" or an object — fall back to 1
-        ch = 1
-
-    # Try to get raw bytes
-    raw = None
-    try:
-        # aiortc/av.AudioFrame: .planes is a list of memoryviews
-        planes = getattr(frame, "planes", None)
-        if planes and len(planes) > 0:
-            raw = planes[0].to_bytes()
-    except Exception:
-        raw = None
-
-    if raw is None:
-        # aiortc AudioFrame may expose to_ndarray
-        try:
-            arr = frame.to_ndarray()
-            # ndarray -> bytes (int16)
-            raw = arr.tobytes()
-            # shape -> channels inference
-            if hasattr(arr, "shape") and len(arr.shape) > 1:
-                ch = arr.shape[0]
-        except Exception:
-            logger.warning("Unable to decode audio frame to bytes")
-            raise
-
-    # Build WAV bytes in-memory
-    with tempfile.TemporaryFile() as tmp:
-        wf = wave.open(tmp, "wb")
-        wf.setnchannels(ch)
-        wf.setsampwidth(2)  # assume 16-bit PCM
-        wf.setframerate(int(sample_rate))
-        wf.writeframes(raw)
-        wf.close()
-        tmp.seek(0)
-        data = tmp.read()
-
-    return data, int(sample_rate), int(ch)
+def audioframe_to_wav_file(frames: list[AudioFrame]) -> Tuple[str, float]:
+    frame_bytes = []
+    sample_rate = 0
+    sample_width = 0
+    
+    duration_seconds = 0.0
+    
+    for frame in frames:
+        frame_bytes.append(frame.to_ndarray().tobytes())
+        sample_rate = frame.sample_rate
+        sample_width = frame.format.bytes
+        duration_seconds += frame.samples / frame.sample_rate
+        
+    with tempfile.NamedTemporaryFile(prefix="original_", suffix=".wav", delete=False) as tmp_original_wav:
+        with wave.open(tmp_original_wav, "wb") as wav:
+            wav.setnchannels(2)
+            wav.setsampwidth(sample_width)
+            wav.setframerate(sample_rate)
+            wav.writeframes(b"".join(frame_bytes))
+        
+    sample_rate_original, data = wavfile.read(tmp_original_wav.name)
+    
+    if data.ndim > 1:
+        data = data[:, 0]
+        
+    num_samples_16k = int(len(data) * 16000 / sample_rate_original)
+    
+    data_16k = resample(data, num_samples_16k)
+    
+    with tempfile.NamedTemporaryFile(prefix="resampled_", suffix=".wav", delete=False) as temporary_resampled_wav:
+        wavfile.write(temporary_resampled_wav.name, 16000, data_16k.astype(np.int16))
+        
+    return temporary_resampled_wav.name, duration_seconds
