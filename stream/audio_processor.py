@@ -8,7 +8,7 @@ from av import AudioFrame
 import audio.ser as ser
 import audio.stt as stt
 from audio.audio_analysis import analyze_audio
-from preprocessing.audio_decoder import audioframe_to_pcm_bytes, audioframe_to_wav_file
+from preprocessing.audio_decoder import audioframe_to_wav_file, cleanup_temp_file
 from stream.frame_buffer import AudioEmotionBuffer, SpeechToTextBuffer
 from stream.frame_processor import BaseProcessor
 from stream.session import StreamSession
@@ -43,7 +43,7 @@ class AudioSpeechToTextProcessor(BaseProcessor):
         self, 
         buffer: SpeechToTextBuffer, 
         session: StreamSession,
-        window_seconds: float = 5.0,
+        window_seconds: float = 2.5,  # 2.5s for responsive real-time STT
     ):
         super().__init__(session)
         self.buffer = buffer
@@ -55,8 +55,9 @@ class AudioSpeechToTextProcessor(BaseProcessor):
         
         while not self._stop:
             try:
+                # Retrieve up to 3s of audio, timeout matches window size
                 frames: list[AudioFrame] = await self.buffer.get_many(
-                    retrive_duration=10, 
+                    retrive_duration=3,  # Reduced from 10s for faster processing
                     timeout=self.window_seconds
                 )
 
@@ -120,12 +121,14 @@ class AudioSpeechToTextProcessor(BaseProcessor):
     def _process_window_sync(self, frames: list[AudioFrame]):
         """Synchronous helper for STT: decode frames, write tmp WAV (16k mono),
         and return (transcript, audio_seconds)."""
-        
-        pcm_bytes, duration_seconds = audioframe_to_wav_file(frames=frames)
-        
-        transcription = stt.transcribe_bytes(pcm_bytes)
-        
-        return transcription, duration_seconds
+        tmp_path = None
+        try:
+            tmp_path, duration_seconds = audioframe_to_wav_file(frames=frames)
+            transcription = stt.transcribe_bytes(tmp_path)
+            return transcription, duration_seconds
+        finally:
+            if tmp_path:
+                cleanup_temp_file(tmp_path)
         
 
 class AudioEmotionProcessor(BaseProcessor):
@@ -242,8 +245,5 @@ class AudioEmotionProcessor(BaseProcessor):
 
             return result, duration_seconds
         finally:
-            if tmp_path and os.path.exists(tmp_path):
-                try:
-                    os.unlink(tmp_path)
-                except Exception:
-                    pass
+            if tmp_path:
+                cleanup_temp_file(tmp_path)

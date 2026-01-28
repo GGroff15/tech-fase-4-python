@@ -1,3 +1,8 @@
+from dotenv import load_dotenv
+
+# Load environment variables before any other imports
+load_dotenv()
+
 from utils.logging_config import configure_logging
 
 configure_logging()
