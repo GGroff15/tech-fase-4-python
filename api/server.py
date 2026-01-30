@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import uuid
 from time import time
 from typing import Any, Optional
 
@@ -41,10 +42,12 @@ peer_connections = set()  # Track active peer connections for cleanup
 class WebRTCConnectionHandler:
     """Handles WebRTC peer connection lifecycle and track processing."""
 
-    def __init__(self, peer_connection: RTCPeerConnection):
+    def __init__(
+        self, peer_connection: RTCPeerConnection, correlation_id: Optional[str] = None
+    ):
         self.peer_connection = peer_connection
         self.data_channel: Optional[Any] = None
-        self.session: StreamSession = StreamSession()
+        self.session: StreamSession = StreamSession(correlation_id=correlation_id)
         self.processor: Optional[BaseProcessor] = None
 
     def setup_data_channel_handler(self) -> None:
@@ -102,14 +105,20 @@ class WebRTCConnectionHandler:
 
     async def _emit_event(self, event: dict[str, Any]) -> None:
         """Emit event through data channel if available and open."""
-        logger.debug(f"Emitting event: {event}")
+        logger.debug(
+            f"Emitting event: {event}",
+            extra={"correlation_id": self.session.correlation_id},
+        )
         if not self.data_channel:
             return
         try:
             if self.data_channel.is_open():
                 self.data_channel.send_json(event)
         except Exception as e:
-            logger.error(f"emit_event failed: {e}")
+            logger.error(
+                f"emit_event failed: {e}",
+                extra={"correlation_id": self.session.correlation_id},
+            )
 
     async def _send_session_init(self) -> None:
         """Send session initialization message to client."""
@@ -118,6 +127,7 @@ class WebRTCConnectionHandler:
             init_event = {
                 "event_type": "session_started",
                 "session_id": self.session.session_id,
+                "correlation_id": self.session.correlation_id,
                 "timestamp_ms": int(time() * 1000),
                 "config": {
                     "max_resolution": MAX_RESOLUTION,
@@ -139,7 +149,10 @@ class WebRTCConnectionHandler:
 
     async def _handle_track_ended(self) -> None:
         """Handle track end by stopping processor and sending summary."""
-        logger.info("Track ended")
+        logger.info(
+            "Track ended",
+            extra={"correlation_id": self.session.correlation_id},
+        )
         if self.processor:
             await self.processor.stop()
 
@@ -149,6 +162,7 @@ class WebRTCConnectionHandler:
             summary_event = {
                 "event_type": "stream_closed",
                 "session_id": self.session.session_id,
+                "correlation_id": self.session.correlation_id,
                 "summary": {
                     "total_frames_received": summary.get("total_received", 0),
                     "total_frames_processed": summary.get("frame_count", 0),
@@ -169,10 +183,14 @@ class WebRTCConnectionHandler:
                 peer_connections.remove(self.peer_connection)
             await self.peer_connection.close()
             logger.info(
-                f"Peer connection closed, session_id: {self.session.session_id}"
+                f"Peer connection closed, session_id: {self.session.session_id}",
+                extra={"correlation_id": self.session.correlation_id},
             )
         except Exception as error:
-            logger.error(f"Error during cleanup: {error}")
+            logger.error(
+                f"Error during cleanup: {error}",
+                extra={"correlation_id": self.session.correlation_id},
+            )
 
 
 @router.get("/")
@@ -216,21 +234,37 @@ async def favicon(request):
 async def offer(request: web.Request) -> web.Response:
     """Handle WebRTC offer and create peer connection."""
     params = await request.json()
-    offer = RTCSessionDescription(sdp=params["sdp"], type=params["type"])
+
+    # Validate optional correlationId as UUID v4
+    correlation_id: Optional[str] = None
+    raw_correlation_id = params.get("correlationId")
+    if raw_correlation_id is not None:
+        try:
+            parsed_uuid = uuid.UUID(str(raw_correlation_id), version=4)
+            if parsed_uuid.version != 4:
+                raise ValueError("Not a UUID v4")
+            correlation_id = str(parsed_uuid)
+        except (ValueError, AttributeError):
+            return web.json_response(
+                {"error": "correlationId must be a valid UUID v4"}, status=400
+            )
+
+    offer_desc = RTCSessionDescription(sdp=params["sdp"], type=params["type"])
 
     peer_connection = RTCPeerConnection()
     peer_connections.add(peer_connection)  # Track for cleanup
 
-    handler = WebRTCConnectionHandler(peer_connection)
+    handler = WebRTCConnectionHandler(peer_connection, correlation_id=correlation_id)
     handler.setup_data_channel_handler()
     handler.setup_track_handler()
 
-    await peer_connection.setRemoteDescription(offer)
+    await peer_connection.setRemoteDescription(offer_desc)
     answer = await peer_connection.createAnswer()
     await peer_connection.setLocalDescription(answer)
 
     logger.info(
-        f"WebRTC peer connection established, session_id: {handler.session.session_id}"
+        f"WebRTC peer connection established, session_id: {handler.session.session_id}",
+        extra={"correlation_id": correlation_id},
     )
 
     return web.json_response(

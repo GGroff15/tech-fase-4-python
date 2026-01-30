@@ -15,3 +15,4 @@ aiohttp-devtools
 transformers
 torch
 vosk
+aiohttp-cors

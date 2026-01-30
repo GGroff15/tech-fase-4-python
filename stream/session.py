@@ -14,8 +14,14 @@ class StreamSession:
     when a frame is accepted for processing.
     """
 
-    def __init__(self, session_id: Optional[str] = None, idle_timeout: int = 30):
+    def __init__(
+        self,
+        session_id: Optional[str] = None,
+        idle_timeout: int = 30,
+        correlation_id: Optional[str] = None,
+    ):
         self.session_id = session_id or str(uuid.uuid4())
+        self.correlation_id = correlation_id
         self.start_time = time.time()
         self.end_time = None
         # Frames processed (keeps previous semantics)
@@ -31,7 +37,10 @@ class StreamSession:
         self.detection_count = 0
         self.idle_timeout = idle_timeout
         self.last_activity = self.start_time
-        logger.info("session.created", extra={"session_id": self.session_id})
+        logger.info(
+            "session.created",
+            extra={"session_id": self.session_id, "correlation_id": self.correlation_id},
+        )
 
     def record_frame(self) -> None:
         self.frame_count += 1
@@ -64,6 +73,7 @@ class StreamSession:
         self.end_time = time.time()
         summary = {
             "session_id": self.session_id,
+            "correlation_id": self.correlation_id,
             "start_time": int(self.start_time * 1000),
             "end_time": int(self.end_time * 1000),
             "frame_count": self.frame_count,
