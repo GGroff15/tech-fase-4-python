@@ -3,6 +3,7 @@
 This module centralizes all magic numbers and configuration constants
 to improve maintainability and follow clean code principles.
 """
+import os
 
 # Image Processing
 MAX_IMAGE_WIDTH = 1280
@@ -33,3 +34,8 @@ QUALITY_WARNING_BLUR_FORMAT = "blurry:score={:.1f}"
 # HTTP Configuration
 DEFAULT_SERVER_HOST = "0.0.0.0"
 DEFAULT_SERVER_PORT = 8000
+
+# Default base for event HTTP forwarding. Typically the OpenAPI server
+# serving `/v3/api-docs` runs on port 8080 in this project; override via env.
+EVENT_FORWARD_BASE_URL = os.getenv("EVENT_FORWARD_BASE_URL", "http://localhost:8080")
+API_KEY = os.getenv("API_KEY", "")

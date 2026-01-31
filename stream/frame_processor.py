@@ -131,10 +131,26 @@ class VideoProcessor(BaseProcessor):
         """Convert detections to event and emit to client."""
         wounds = self._convert_detections(detections)
 
+        # Record metrics (total wounds for this frame) and capture frame index
         self._record_detections(wounds)
-        event = self._create_detection_event(wounds, quality_warning)
+        frame_index = self.session.frame_count
         self.session.record_frame()
-        await self._emit_event(event, emitter)
+
+        # Emit one event per detected object with required schema:
+        # { "label": "person", "confidence": 0.76, "frameIndex": 1234 }
+        for wound in wounds:
+            try:
+                per_obj = {
+                    "event_type": "object",
+                    "label": wound.cls,
+                    "confidence": round(float(wound.confidence), 2),
+                    "frameIndex": frame_index,
+                }
+            except Exception:
+                # Fallback in case wound fields are malformed
+                per_obj = {"label": "unknown", "confidence": 0.0, "frameIndex": frame_index}
+
+            await self._emit_event(per_obj, emitter)
 
     def _record_detections(self, wounds: List[WoundModel]) -> None:
         """Record detection count in session."""

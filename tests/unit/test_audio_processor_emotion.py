@@ -23,17 +23,14 @@ async def test_audio_processor_emits_emotion(monkeypatch):
     wav_data = b"RIFFxxxxWAVEfmt " + b"data" + len(pcm).to_bytes(4, "little") + pcm
 
     def fake_decode(frame):
-        return wav_data, sample_rate, channels
-
-    def fake_analyze(path):
-        return {"ok": True, "path": path}
+        # Return a fake temp path and 1.0s duration to match audioframe_to_wav_file signature
+        return "fake.wav", 1.0
 
     def fake_predict_emotion(path):
         return {"label": "neutral", "score": 0.5}
 
     # Patch the module-level imports used by the processor
-    monkeypatch.setattr("stream.audio_processor.audioframe_to_wav_bytes", fake_decode)
-    monkeypatch.setattr("stream.audio_processor.analyze_audio", fake_analyze)
+    monkeypatch.setattr("stream.audio_processor.audioframe_to_wav_file", fake_decode)
     monkeypatch.setattr("audio.ser.predict_emotion", fake_predict_emotion)
 
     # Put a single frame (the fake decoder will provide 1s of PCM)
@@ -49,9 +46,11 @@ async def test_audio_processor_emits_emotion(monkeypatch):
 
     assert len(events) >= 1
     ev = events[0]
-    assert ev["event_type"] == "audio_event"
+    assert ev["event_type"] == "emotion_event"
     assert ev["audio_seconds"] == pytest.approx(1.0)
-    # Ensure emotion was merged into analysis
-    assert "analysis" in ev
-    assert isinstance(ev["analysis"], dict)
-    assert ev["analysis"].get("emotion") == {"label": "neutral", "score": 0.5}
+    # Ensure emotion payload is present and standardized
+    assert "emotion" in ev
+    assert isinstance(ev["emotion"], dict)
+    assert ev["emotion"]["emotion"] == "neutral"
+    assert ev["emotion"]["confidence"] == pytest.approx(0.5)
+    assert isinstance(ev["emotion"]["timestamp"], str)

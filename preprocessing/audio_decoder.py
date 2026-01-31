@@ -1,6 +1,7 @@
 import logging
 import os
 import tempfile
+from turtle import st
 import wave
 from typing import Tuple
 
@@ -64,11 +65,11 @@ def audioframe_to_pcm_bytes(frames: list[AudioFrame]) -> Tuple[bytes, float]:
     return wav_data, duration_seconds
 
 
-def audioframe_to_wav_file(frames: list[AudioFrame]) -> Tuple[str, float]:
+def audioframe_to_wav_file(frames: list[AudioFrame]) -> str:
     """Convert AudioFrames to a temporary WAV file (16kHz mono PCM).
     
     Returns:
-        Tuple of (temp_file_path, duration_seconds)
+        Path to the temporary WAV file.
         Note: Caller should clean up the temp file when done.
     """
     frame_bytes = []
@@ -106,7 +107,7 @@ def audioframe_to_wav_file(frames: list[AudioFrame]) -> Tuple[str, float]:
     with tempfile.NamedTemporaryFile(prefix="resampled_", suffix=".wav", delete=False) as tmp_resampled_wav:
         wavfile.write(tmp_resampled_wav.name, TARGET_SAMPLE_RATE, data_16k.astype(np.int16))
 
-    return tmp_resampled_wav.name, duration_seconds
+    return tmp_resampled_wav.name
 
 
 def cleanup_temp_file(file_path: str) -> None:

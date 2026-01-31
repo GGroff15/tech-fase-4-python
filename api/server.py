@@ -17,6 +17,7 @@ from config.constants import (
     MAX_IMAGE_HEIGHT,
     MAX_IMAGE_WIDTH,
 )
+from config.constants import EVENT_FORWARD_BASE_URL
 from stream.audio_processor import AudioProcessor
 from stream.frame_buffer import (
     AudioBufferBroadcast,
@@ -27,7 +28,7 @@ from stream.frame_buffer import (
 )
 from stream.frame_processor import BaseProcessor, VideoProcessor
 from stream.session import StreamSession
-from utils.emitter import DataChannelWrapper
+from utils.emitter import DataChannelWrapper, http_post_event
 
 logger = logging.getLogger("yolo_rest.server")
 
@@ -109,14 +110,34 @@ class WebRTCConnectionHandler:
             f"Emitting event: {event}",
             extra={"correlation_id": self.session.correlation_id},
         )
-        if not self.data_channel:
-            return
         try:
-            if self.data_channel.is_open():
-                self.data_channel.send_json(event)
+            try:
+                # Prefer explicit `event_type` if present
+                et = None
+                try:
+                    et = event.get("event_type")
+                except Exception:
+                    et = None
+
+                target_path = None
+                if et == "emotion" or (isinstance(event, dict) and "emotion" in event):
+                    target_path = "/events/emotion"
+                elif et == "transcript" or (isinstance(event, dict) and "text" in event):
+                    target_path = "/events/transcript"
+                elif et == "object" or (isinstance(event, dict) and ("label" in event or "bbox" in event or "frameIndex" in event)):
+                    target_path = "/events/object"
+
+                if target_path:
+                    # fire-and-forget but await to preserve ordering; errors are swallowed inside helper
+                    await http_post_event(target_path, event, correlation_id=self.session.correlation_id, base_url=EVENT_FORWARD_BASE_URL)
+            except Exception as e:
+                logger.debug(
+                    f"http forward attempt failed: {e}",
+                    extra={"correlation_id": self.session.correlation_id},
+                )
         except Exception as e:
             logger.error(
-                f"emit_event failed: {e}",
+                f"emit_event failed (datachannel): {e}",
                 extra={"correlation_id": self.session.correlation_id},
             )
 

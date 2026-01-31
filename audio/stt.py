@@ -108,3 +108,66 @@ def transcribe_bytes(wav_file: str) -> Optional[str]:
     except Exception as e:
         logger.exception("Unexpected error during transcription: %s", e)
         return None
+
+
+def transcribe_with_metadata(wav_file: str) -> Optional[dict]:
+    """Transcribe a WAV file and return structured metadata.
+
+    Returns a dict with keys:
+      - text: Optional[str]
+      - confidence: float (0.0-1.0)
+      - start: Optional[float] (seconds relative to start of audio)
+      - end: Optional[float] (seconds relative to start of audio)
+
+    Falls back to returning text with default confidence/start/end when
+    word-level metadata is not available.
+    """
+    from vosk import KaldiRecognizer
+
+    model = get_vosk_model()
+    if model is None:
+        logger.warning("Vosk model not available; cannot transcribe with metadata")
+        return None
+
+    try:
+        with wave.open(wav_file, "rb") as wf:
+            framerate = wf.getframerate()
+
+            rec = KaldiRecognizer(model, framerate)
+            # Request word-level timestamps/confidence
+            rec.SetWords(True)
+
+            while True:
+                data = wf.readframes(VOSK_CHUNK_SIZE)
+                if not data:
+                    break
+                rec.AcceptWaveform(data)
+
+            res_json = rec.FinalResult()
+            res = json.loads(res_json)
+            text = res.get("text", "").strip() or None
+            words = res.get("result", []) or []
+
+            if words:
+                confs = [float(w.get("conf", 0.0)) for w in words if w.get("conf") is not None]
+                avg_conf = float(sum(confs) / len(confs)) if confs else 0.0
+                try:
+                    start = float(words[0].get("start", 0.0))
+                    end = float(words[-1].get("end", start))
+                except Exception:
+                    start = None
+                    end = None
+
+                return {"text": text, "confidence": avg_conf, "start": start, "end": end}
+            else:
+                return {"text": text, "confidence": 0.0, "start": None, "end": None}
+
+    except FileNotFoundError:
+        logger.error("WAV file not found: %s", wav_file)
+        return None
+    except wave.Error as e:
+        logger.error("Invalid WAV file %s: %s", wav_file, e)
+        return None
+    except Exception as e:
+        logger.exception("Unexpected error during transcription with metadata: %s", e)
+        return None

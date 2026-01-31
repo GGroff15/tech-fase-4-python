@@ -5,11 +5,15 @@ consistent error handling and `DataChannelWrapper` to encapsulate data
 channel ready-state checks and sending JSON safely.
 """
 
-import asyncio
 import inspect
 import json
 import logging
 from typing import Any, Callable, Optional
+
+import aiohttp
+import traceback
+
+from config.constants import EVENT_FORWARD_BASE_URL, API_KEY
 
 logger = logging.getLogger("yolo_rest.utils.emitter")
 
@@ -71,3 +75,40 @@ class DataChannelWrapper:
                 logger.error("DataChannel send failed: %s", e)
             except Exception:
                 pass
+
+
+_session: Optional[aiohttp.ClientSession] = None
+
+
+async def _get_session() -> aiohttp.ClientSession:
+    global _session
+    if _session is None or _session.closed:
+        timeout = aiohttp.ClientTimeout(total=3)
+        _session = aiohttp.ClientSession(timeout=timeout)
+    return _session
+
+
+async def http_post_event(path: str, payload: Any, correlation_id: Optional[str] = None, base_url: Optional[str] = None) -> None:
+    """POST `payload` as JSON to `base_url + path`.
+
+    This is best-effort: exceptions are logged and swallowed so callers
+    (real-time processors) are not affected by transient HTTP errors.
+    """
+
+    base = base_url or EVENT_FORWARD_BASE_URL
+    url = f"{base.rstrip('/')}/{path.lstrip('/')}"
+    try:
+        session = await _get_session()
+        headers = {
+            "Content-Type": "application/json",
+            "X-API-Key": API_KEY
+            }
+        if correlation_id:
+            headers["X-Correlation-Id"] = str(correlation_id)
+        await session.post(url, json=payload, headers=headers)
+    except Exception as e:
+        try:
+            logger.error("http_post_event failed for %s: %s", url, e)
+            logger.debug(traceback.format_exc())
+        except Exception:
+            pass

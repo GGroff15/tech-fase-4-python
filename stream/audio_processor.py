@@ -1,13 +1,11 @@
 import asyncio
 import logging
-import os
-import time
-from typing import Any, Callable, Dict
+import datetime
+from typing import Any, Callable, Dict, Optional
 from av import AudioFrame
 
 import audio.ser as ser
 import audio.stt as stt
-from audio.audio_analysis import analyze_audio
 from preprocessing.audio_decoder import audioframe_to_wav_file, cleanup_temp_file
 from stream.frame_buffer import AudioEmotionBuffer, SpeechToTextBuffer
 from stream.frame_processor import BaseProcessor
@@ -84,11 +82,9 @@ class AudioSpeechToTextProcessor(BaseProcessor):
         try:
             try:
                 if len(frames) <= 1:
-                    transcript, audio_seconds = self._process_window_sync(
-                        frames
-                    )
+                    stt_result: Optional[dict] = self._process_window_sync(frames)
                 else:
-                    transcript, audio_seconds = await asyncio.to_thread(
+                    stt_result: Optional[dict] = await asyncio.to_thread(
                         self._process_window_sync, frames
                     )
             except Exception as e:
@@ -96,18 +92,22 @@ class AudioSpeechToTextProcessor(BaseProcessor):
                 return
 
             try:
-                self.session.record_audio(frames=len(frames), seconds=audio_seconds)
+                self.session.record_audio(frames=len(frames), seconds=0.0)
             except Exception:
                 logger.debug("session.record_audio failed, continuing")
 
-            # Build and emit event
+            # stt_result expected to be a dict: {text, confidence, start, end}
+            text = stt_result.get("text") if stt_result else None
+            confidence = float(stt_result.get("confidence", 0.0) or 0.0) if stt_result else 0.0
+            start_offset = stt_result.get("start") if stt_result else None
+            end_offset = stt_result.get("end") if stt_result else None
+
             event = {
-                "event_type": "transcription_event",
-                "session_id": self.session.session_id,
-                "timestamp_ms": int(time.time() * 1000),
-                "transcript": transcript,
-                "audio_seconds": float(audio_seconds),
-                "frames": len(frames),
+                "event_type": "transcript",
+                "text": text,
+                "confidence": float(confidence),
+                "startTime": start_offset,
+                "endTime": end_offset,
             }
 
             try:
@@ -118,14 +118,13 @@ class AudioSpeechToTextProcessor(BaseProcessor):
         except Exception as error:
             logger.error(f"audio processing error: {error}")
 
-    def _process_window_sync(self, frames: list[AudioFrame]):
+    def _process_window_sync(self, frames: list[AudioFrame]) -> Optional[dict]:
         """Synchronous helper for STT: decode frames, write tmp WAV (16k mono),
         and return (transcript, audio_seconds)."""
         tmp_path = None
         try:
-            tmp_path, duration_seconds = audioframe_to_wav_file(frames=frames)
-            transcription = stt.transcribe_bytes(tmp_path)
-            return transcription, duration_seconds
+            tmp_path = audioframe_to_wav_file(frames=frames)
+            return stt.transcribe_with_metadata(tmp_path)
         finally:
             if tmp_path:
                 cleanup_temp_file(tmp_path)
@@ -177,11 +176,11 @@ class AudioEmotionProcessor(BaseProcessor):
             try:
                 if len(frames) <= 1:
                     # small windows: run directly to avoid thread scheduling latency in tests
-                    result, duration_seconds = self._process_window_sync(
+                    result = self._process_window_sync(
                         frames
                     )
                 else:
-                    result, duration_seconds = await asyncio.to_thread(
+                    result = await asyncio.to_thread(
                         self._process_window_sync, frames
                     )
             except Exception as e:
@@ -189,22 +188,13 @@ class AudioEmotionProcessor(BaseProcessor):
                 return
 
             try:
-                self.session.record_audio(frames=len(frames), seconds=duration_seconds)
+                self.session.record_audio(frames=len(frames), seconds=0.0)
             except Exception:
                 logger.debug("session.record_audio failed, continuing")
 
-            event = {
-                "event_type": "audio_event",
-                "session_id": self.session.session_id,
-                "timestamp_ms": int(time.time() * 1000),
-                "analysis": result,
-                "audio_seconds": float(duration_seconds),
-                "frames": len(frames),
-                "window_seconds": float(self.window_seconds),
-            }
-
+            
             try:
-                await self.emitter(event)
+                await self.emitter(result)
             except Exception as e:
                 logger.error(f"emit audio event failed: {e}")
 
@@ -219,31 +209,22 @@ class AudioEmotionProcessor(BaseProcessor):
         """
         tmp_path = None
         try:
-            tmp_path, duration_seconds = audioframe_to_wav_file(frames=frames)
-
-            result = analyze_audio(tmp_path)
+            tmp_path = audioframe_to_wav_file(frames=frames)
 
             try:
-                emotion = ser.predict_emotion(tmp_path)
+                ser_out = ser.predict_emotion(tmp_path)
             except Exception as e:
                 logger.debug(f"predict_emotion failed: {e}")
-                emotion = None
+                ser_out = None
 
-            if emotion:
-                try:
-                    result["emotion"] = emotion
-                except Exception:
-                    result = {"result": result, "emotion": emotion}
-            else:
-                try:
-                    result.setdefault("emotion", {"label": None, "score": 0.0})
-                except Exception:
-                    result = {
-                        "result": result,
-                        "emotion": {"label": None, "score": 0.0},
-                    }
+            emotion_payload = {
+                "event_type": "emotion",
+                "emotion": ser_out.get("label") if ser_out else None,
+                "confidence": float(ser_out.get("score", 0.0)) if ser_out else 0.0,
+                "timestamp": datetime.datetime.utcnow().replace(microsecond=0).isoformat() + "Z",
+            }
 
-            return result, duration_seconds
+            return emotion_payload
         finally:
             if tmp_path:
                 cleanup_temp_file(tmp_path)
