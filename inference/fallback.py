@@ -32,7 +32,6 @@ class LocalYoloFallback:
         )
         self.conf = float(os.getenv("LOCAL_YOLO_CONF", str(conf)))
 
-        # create a lazy loader that will import ultralytics and construct the model
         def _factory():
             try:
                 from ultralytics import YOLO
@@ -42,16 +41,15 @@ class LocalYoloFallback:
                     try:
                         m.to("cuda")
                     except Exception:
-                        # ignore gpu errors
-                        pass
+                        logger.warning("Failed to move YOLO model to GPU, using CPU instead", exc_info=True)
                 return m
             except Exception:
+                logger.warning("Failed to load YOLO model", exc_info=True)
                 return None
 
         self._loader = LazyModelLoader(_factory, name="ultralytics_yolo")
 
     def _load(self):
-        # ensure loader attempted to initialize
         model = self._loader.get()
         if model is None:
             raise RuntimeError(
@@ -68,12 +66,14 @@ class LocalYoloFallback:
         try:
             model = self._load()
         except RuntimeError:
+            logger.warning("Local YOLO model not available for fallback")
             return []
 
         # Ultralytics supports passing numpy images directly
         try:
             results = model.predict(source=image, conf=self.conf)
         except Exception:
+            logger.warning("Local YOLO inference failed", exc_info=True)
             return []
 
         # parse results into standardized detection dicts
@@ -115,7 +115,6 @@ class LocalYoloFallback:
             conf = float(confs[i].cpu().numpy()) if confs is not None else 0.0
             cls_idx = int(clss[i].cpu().numpy()) if clss is not None else 0
             
-            # Get model from loader to access class names
             model = self._loader.get()
             cls_name = (
                 model.names.get(cls_idx, str(cls_idx))
