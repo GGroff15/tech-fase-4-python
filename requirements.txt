@@ -16,3 +16,5 @@ transformers
 torch
 vosk
 aiohttp-cors
+librosa
+soundfile

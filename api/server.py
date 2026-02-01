@@ -112,7 +112,6 @@ class WebRTCConnectionHandler:
         )
         try:
             try:
-                # Prefer explicit `event_type` if present
                 et = None
                 try:
                     et = event.get("event_type")
@@ -128,7 +127,6 @@ class WebRTCConnectionHandler:
                     target_path = "/events/object"
 
                 if target_path:
-                    # fire-and-forget but await to preserve ordering; errors are swallowed inside helper
                     await http_post_event(target_path, event, correlation_id=self.session.correlation_id, base_url=EVENT_FORWARD_BASE_URL)
             except Exception as e:
                 logger.debug(

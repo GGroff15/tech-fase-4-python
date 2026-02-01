@@ -1,9 +1,12 @@
+import logging
 import os
 from typing import Any, Dict, List, Optional
 
 import numpy as np
 
-from utils.loader import LazyModelLoader, get_torch_device
+from utils.loader import LazyModelLoader
+
+logger = logging.getLogger("yolo_rest.fallback")
 
 
 class LocalYoloFallback:
@@ -111,9 +114,12 @@ class LocalYoloFallback:
             h = y2 - y1
             conf = float(confs[i].cpu().numpy()) if confs is not None else 0.0
             cls_idx = int(clss[i].cpu().numpy()) if clss is not None else 0
+            
+            # Get model from loader to access class names
+            model = self._loader.get()
             cls_name = (
-                getattr(self._model, "names", {}).get(cls_idx, str(cls_idx))
-                if hasattr(self._model, "names")
+                model.names.get(cls_idx, str(cls_idx))
+                if model and hasattr(model, "names")
                 else str(cls_idx)
             )
             return {
@@ -123,7 +129,8 @@ class LocalYoloFallback:
                 "confidence": conf,
                 "type_confidence": conf,
             }
-        except Exception:
+        except Exception as e:
+            logger.warning(f"Failed to parse detection box: {e}")
             return None
 
 

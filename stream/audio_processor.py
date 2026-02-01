@@ -96,11 +96,13 @@ class AudioSpeechToTextProcessor(BaseProcessor):
             except Exception:
                 logger.debug("session.record_audio failed, continuing")
 
-            # stt_result expected to be a dict: {text, confidence, start, end}
             text = stt_result.get("text") if stt_result else None
             confidence = float(stt_result.get("confidence", 0.0) or 0.0) if stt_result else 0.0
             start_offset = stt_result.get("start") if stt_result else None
             end_offset = stt_result.get("end") if stt_result else None
+
+            if text is None:
+                return
 
             event = {
                 "event_type": "transcript",

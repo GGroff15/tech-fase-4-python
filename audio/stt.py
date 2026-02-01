@@ -20,6 +20,8 @@ import logging
 import os
 import wave
 from typing import Optional
+from vosk import KaldiRecognizer
+from datetime import datetime, timezone, timedelta
 
 logger = logging.getLogger("yolo_rest.audio.stt")
 
@@ -61,6 +63,16 @@ def get_vosk_model():
         _VOSK_MODEL_LOADED = True
     
     return _VOSK_MODEL
+
+
+def _iso_utc_from_offset(base_utc: datetime, offset_seconds: Optional[float]) -> Optional[str]:
+    """Return ISO-8601 UTC timestamp (e.g. 2025-01-01T12:00:02Z) for base_utc + offset_seconds.
+
+    If offset_seconds is None, return None.
+    """
+    if offset_seconds is None:
+        return None
+    return (base_utc + timedelta(seconds=offset_seconds)).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 def transcribe_bytes(wav_file: str) -> Optional[str]:
@@ -114,16 +126,15 @@ def transcribe_with_metadata(wav_file: str) -> Optional[dict]:
     """Transcribe a WAV file and return structured metadata.
 
     Returns a dict with keys:
-      - text: Optional[str]
-      - confidence: float (0.0-1.0)
-      - start: Optional[float] (seconds relative to start of audio)
-      - end: Optional[float] (seconds relative to start of audio)
+        - text: Optional[str]
+        - confidence: float (0.0-1.0)
+        - start: Optional[str] (ISO-8601 UTC, e.g. 2025-01-01T12:00:02Z)
+        - end: Optional[str] (ISO-8601 UTC)
 
     Falls back to returning text with default confidence/start/end when
     word-level metadata is not available.
     """
-    from vosk import KaldiRecognizer
-
+        
     model = get_vosk_model()
     if model is None:
         logger.warning("Vosk model not available; cannot transcribe with metadata")
@@ -132,6 +143,9 @@ def transcribe_with_metadata(wav_file: str) -> Optional[dict]:
     try:
         with wave.open(wav_file, "rb") as wf:
             framerate = wf.getframerate()
+
+            # Record the UTC time representing the start of this audio file processing.
+            base_time_utc = datetime.now(timezone.utc)
 
             rec = KaldiRecognizer(model, framerate)
             # Request word-level timestamps/confidence
@@ -152,13 +166,16 @@ def transcribe_with_metadata(wav_file: str) -> Optional[dict]:
                 confs = [float(w.get("conf", 0.0)) for w in words if w.get("conf") is not None]
                 avg_conf = float(sum(confs) / len(confs)) if confs else 0.0
                 try:
-                    start = float(words[0].get("start", 0.0))
-                    end = float(words[-1].get("end", start))
+                    start_sec = float(words[0].get("start", 0.0))
+                    end_sec = float(words[-1].get("end", start_sec))
                 except Exception:
-                    start = None
-                    end = None
+                    start_sec = None
+                    end_sec = None
 
-                return {"text": text, "confidence": avg_conf, "start": start, "end": end}
+                start_iso = _iso_utc_from_offset(base_time_utc, start_sec)
+                end_iso = _iso_utc_from_offset(base_time_utc, end_sec)
+
+                return {"text": text, "confidence": avg_conf, "start": start_iso, "end": end_iso}
             else:
                 return {"text": text, "confidence": 0.0, "start": None, "end": None}
 
