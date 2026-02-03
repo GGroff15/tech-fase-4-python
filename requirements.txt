@@ -18,3 +18,5 @@ vosk
 aiohttp-cors
 librosa
 soundfile
+webrtcvad-wheels
+google-cloud-speech

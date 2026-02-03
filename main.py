@@ -1,7 +1,6 @@
 import aiohttp_cors
 from dotenv import load_dotenv
 
-# Load environment variables before any other imports
 load_dotenv()
 
 from utils.logging_config import configure_logging
@@ -13,12 +12,12 @@ from api import health, server
 from audio import ser as audio_ser
 
 
-
 app = web.Application()
 app.add_routes(health.router)
-app.add_routes(server.router)
+app.router.add_post("/offer", server.offer)
 app.on_shutdown.append(server.on_shutdown)
 app.on_startup.append(audio_ser.preload)
+
 cors = aiohttp_cors.setup(app, defaults={
 	"*": aiohttp_cors.ResourceOptions(
 		allow_credentials=True,
@@ -32,4 +31,5 @@ for route in list(app.router.routes()):
 		cors.add(route.resource)
 	except Exception:
 		pass
+
 web.run_app(app, host="0.0.0.0", port=8000)
