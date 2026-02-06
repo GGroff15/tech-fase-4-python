@@ -1,10 +1,7 @@
-"""Helpers for safe event emission and DataChannel wrapping.
+"""Helpers for event emission over HTTP and WebRTC data channels."""
 
-Provides `safe_emit` to call arbitrary emitters (sync or async) with
-consistent error handling and `DataChannelWrapper` to encapsulate data
-channel ready-state checks and sending JSON safely.
-"""
-
+import asyncio
+import json
 import logging
 import requests
 from typing import Any
@@ -32,3 +29,31 @@ def http_post_event(path: str, payload: Any, session: Session) -> None:
         requests.post(url, json=payload.to_dict(), headers=headers)
     except Exception as e:
         logger.error("http_post_event failed for %s: %s", url, e)
+
+
+class DataChannelWrapper:
+    """Thread-safe JSON sender for an aiortc data channel."""
+
+    def __init__(self, channel: Any, loop: asyncio.AbstractEventLoop | None = None) -> None:
+        self._channel = channel
+        self._loop = loop or asyncio.get_running_loop()
+
+    def _is_open(self) -> bool:
+        return bool(self._channel) and getattr(self._channel, "readyState", "") == "open"
+
+    def send_json(self, payload: Any) -> None:
+        if not self._is_open():
+            logger.debug("data channel not open; skipping send")
+            return
+
+        try:
+            data = payload.to_dict() if hasattr(payload, "to_dict") else payload
+            message = json.dumps(data)
+        except Exception as e:
+            logger.error("failed to serialize payload for data channel: %s", e)
+            return
+
+        try:
+            self._loop.call_soon_threadsafe(self._channel.send, message)
+        except Exception as e:
+            logger.error("data channel send failed: %s", e)

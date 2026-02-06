@@ -4,6 +4,7 @@ from aiortc import RTCPeerConnection, RTCSessionDescription
 from api.session import SessionRegistry
 from tracks.audio_observer import AudioObserverTrack
 from tracks.video_observer import VideoObserverTrack
+from config.constants import DETECTIONS_CHANNEL_LABEL
 
 
 session_registry = SessionRegistry()
@@ -30,6 +31,11 @@ async def offer(request):
 
         elif track.kind == VideoObserverTrack.kind:
             pc.addTrack(VideoObserverTrack(track, session))
+
+    @pc.on("datachannel")
+    def on_datachannel(channel):
+        if channel.label == DETECTIONS_CHANNEL_LABEL:
+            session.attach_data_channel(channel)
     
     @pc.on("connectionstatechange")
     async def on_connectionstatechange():

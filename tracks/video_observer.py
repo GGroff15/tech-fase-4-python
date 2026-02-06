@@ -1,9 +1,9 @@
 import asyncio
 from aiortc import MediaStreamTrack
 from api.session import Session
-from config.constants import DEFAULT_ROBOFLOW_CONFIDENCE, ROBOFLOW_MODEL_ID
+from config.constants import ROBOFLOW_MODEL_ID
 from events.video_events import VisionEvent
-from utils.emitter import http_post_event
+from utils.emitter import DataChannelWrapper, http_post_event
 from video.frame_sampler import FrameSampler
 from inference import get_model
 
@@ -25,7 +25,7 @@ class VideoObserverTrack(MediaStreamTrack):
 
         if self._sampler.should_process():
             img = frame.to_ndarray(format="bgr24")
-            frame_index = self._frame_index  # captura o valor atual
+            frame_index = self._frame_index
 
             self._loop.run_in_executor(
                 None,
@@ -45,8 +45,15 @@ class VideoObserverTrack(MediaStreamTrack):
                 event = VisionEvent(
                     label=prediction.class_name,
                     confidence=prediction.confidence,
-                    frameIndex=frame_index
+                    frameIndex=frame_index,
+                    x=prediction.x,
+                    y=prediction.y,
+                    width=prediction.width,
+                    height=prediction.height,
                 )
                 http_post_event("object", event, self._session)
+                channel = self._session.data_channel
+                if channel:
+                    DataChannelWrapper(channel, self._loop).send_json(event)
 
 

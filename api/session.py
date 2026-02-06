@@ -1,4 +1,8 @@
 import time
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:  # pragma: no cover
+    from aiortc import RTCDataChannel
 
 
 class Session:
@@ -6,8 +10,17 @@ class Session:
         self.correlation_id = correlation_id
         self.created_at = time.time()
         self.closed_at: float | None = None
+        self.data_channel: "RTCDataChannel | None" = None
+
+    def attach_data_channel(self, channel: "RTCDataChannel") -> None:
+        self.data_channel = channel
 
     def close(self):
+        if self.data_channel and getattr(self.data_channel, "readyState", "") != "closed":
+            try:
+                self.data_channel.close()
+            except Exception:
+                pass
         self.closed_at = time.time()
 
 
