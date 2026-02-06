@@ -1,11 +1,11 @@
 import asyncio
 from aiortc import MediaStreamTrack
 from api.session import Session
+from config.constants import DEFAULT_ROBOFLOW_CONFIDENCE, ROBOFLOW_MODEL_ID
 from events.video_events import VisionEvent
 from utils.emitter import http_post_event
 from video.frame_sampler import FrameSampler
-from models.yolo_model import YoloV8Model
-
+from inference import get_model
 
 class VideoObserverTrack(MediaStreamTrack):
     kind = "video"
@@ -14,7 +14,7 @@ class VideoObserverTrack(MediaStreamTrack):
         super().__init__()
         self._source = source
         self._sampler = FrameSampler(fps=3)
-        self._yolo = YoloV8Model()
+        self._yolo = get_model(model_id=ROBOFLOW_MODEL_ID)
         self._loop: asyncio.AbstractEventLoop = asyncio.get_running_loop()
         self._frame_index = 0
         self._session = session
@@ -38,14 +38,15 @@ class VideoObserverTrack(MediaStreamTrack):
 
 
     def _run_yolo(self, img, frame_index: int):
-        labels, confidences = self._yolo.predict(img)
-
-        for label, confidence in zip(labels, confidences):
-            event = VisionEvent(
-                label=label,
-                confidence=round(confidence, 3),
-                frameIndex=frame_index
-            )
-            http_post_event("object", event, self._session)
+        labels = self._yolo.infer(img)
+        
+        for label in labels:
+            for prediction in label.predictions:
+                event = VisionEvent(
+                    label=prediction.class_name,
+                    confidence=prediction.confidence,
+                    frameIndex=frame_index
+                )
+                http_post_event("object", event, self._session)
 
 

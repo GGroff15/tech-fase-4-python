@@ -20,3 +20,5 @@ librosa
 soundfile
 webrtcvad-wheels
 google-cloud-speech
+inference
+inference-gpu

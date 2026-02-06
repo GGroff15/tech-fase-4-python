@@ -5,12 +5,14 @@ from config.constants import (DATA_CHANNEL_INIT_DELAY_SEC,
                               DEFAULT_CONFIDENCE_THRESHOLD,
                               DEFAULT_IDLE_TIMEOUT_SEC,
                               DEFAULT_ROBOFLOW_CONFIDENCE, DEFAULT_SERVER_HOST,
-                              DEFAULT_SERVER_PORT, DEFAULT_USE_LOCAL_FALLBACK,
+                              DEFAULT_SERVER_PORT,
                               DETECTIONS_CHANNEL_LABEL, FRAME_BUFFER_MAX_SIZE,
                               IMAGE_ENCODING_FORMAT, MAX_IMAGE_HEIGHT,
                               MAX_IMAGE_WIDTH, MIN_IMAGE_DIMENSION,
                               QUALITY_WARNING_BLUR_FORMAT,
-                              ROBOFLOW_HTTP_TIMEOUT_SEC)
+                              ROBOFLOW_HTTP_TIMEOUT_SEC,
+                              ROBOFLOW_API_KEY,
+                              ROBOFLOW_MODEL_ID)
 
 __all__ = [
     "MAX_IMAGE_WIDTH",
@@ -25,7 +27,8 @@ __all__ = [
     "DETECTIONS_CHANNEL_LABEL",
     "DEFAULT_ROBOFLOW_CONFIDENCE",
     "ROBOFLOW_HTTP_TIMEOUT_SEC",
-    "DEFAULT_USE_LOCAL_FALLBACK",
+    "ROBOFLOW_API_KEY",
+    "ROBOFLOW_MODEL_ID",
     "QUALITY_WARNING_BLUR_FORMAT",
     "DEFAULT_SERVER_HOST",
     "DEFAULT_SERVER_PORT",

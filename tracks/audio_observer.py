@@ -5,7 +5,6 @@ from aiortc import MediaStreamTrack
 from api import session
 from audio.resampler import AudioResampler16kMono
 from audio.transcription_pipeline import RealtimeTranscriptionPipeline
-from audio.vosk_transcriber import VoskTranscriber
 from audio.emotion_buffer import EmotionAudioBuffer
 from events.audio_events import EmotionEvent, TranscriptionEvent
 from models.emotion_model import SpeechEmotionModel
@@ -22,7 +21,6 @@ class AudioObserverTrack(MediaStreamTrack):
         super().__init__()
         self._source = source
         self._resampler = AudioResampler16kMono()
-        self._vosk = VoskTranscriber("D:\\Users\\guilh\\Downloads\\vosk-model-small-pt-0.3 (1)\\vosk-model-small-pt-0.3")
         self._emotion_buffer = EmotionAudioBuffer()
         self._loop: asyncio.AbstractEventLoop = asyncio.get_running_loop()
         self._emotion_model = SpeechEmotionModel()

@@ -9,14 +9,12 @@ configure_logging()
 
 from aiohttp import web
 from api import health, server
-from audio import ser as audio_ser
 
 
 app = web.Application()
 app.add_routes(health.router)
 app.router.add_post("/offer", server.offer)
 app.on_shutdown.append(server.on_shutdown)
-app.on_startup.append(audio_ser.preload)
 
 cors = aiohttp_cors.setup(app, defaults={
 	"*": aiohttp_cors.ResourceOptions(
