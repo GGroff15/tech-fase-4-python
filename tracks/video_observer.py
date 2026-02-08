@@ -1,11 +1,11 @@
 import asyncio
 from aiortc import MediaStreamTrack
 from api.session import Session
-from config.constants import ROBOFLOW_MODEL_ID
+from config.constants import ROBOFLOW_API_KEY, ROBOFLOW_MODEL_ID
 from events.video_events import VisionEvent
 from utils.emitter import DataChannelWrapper, http_post_event
 from video.frame_sampler import FrameSampler
-from inference import get_model
+from inference_sdk import InferenceHTTPClient
 
 class VideoObserverTrack(MediaStreamTrack):
     kind = "video"
@@ -14,7 +14,9 @@ class VideoObserverTrack(MediaStreamTrack):
         super().__init__()
         self._source = source
         self._sampler = FrameSampler(fps=3)
-        self._yolo = get_model(model_id=ROBOFLOW_MODEL_ID)
+        self._yolo = InferenceHTTPClient(
+            api_url="https://serverless.roboflow.com",
+            api_key=ROBOFLOW_API_KEY)
         self._loop: asyncio.AbstractEventLoop = asyncio.get_running_loop()
         self._frame_index = 0
         self._session = session
@@ -38,22 +40,23 @@ class VideoObserverTrack(MediaStreamTrack):
 
 
     def _run_yolo(self, img, frame_index: int):
-        labels = self._yolo.infer(img)
+        result = self._yolo.infer(img, model_id=ROBOFLOW_MODEL_ID)
         
-        for label in labels:
-            for prediction in label.predictions:
-                event = VisionEvent(
-                    label=prediction.class_name,
-                    confidence=prediction.confidence,
-                    frameIndex=frame_index,
-                    x=prediction.x,
-                    y=prediction.y,
-                    width=prediction.width,
-                    height=prediction.height,
-                )
-                http_post_event("object", event, self._session)
-                channel = self._session.data_channel
-                if channel:
-                    DataChannelWrapper(channel, self._loop).send_json(event)
+        predictions = result.get("predictions")
+        
+        for prediction in predictions:
+            event = VisionEvent(
+                label=prediction["class"],
+                confidence=prediction["confidence"],
+                frameIndex=frame_index,
+                x=prediction["x"],
+                y=prediction["y"],
+                width=prediction["width"],
+                height=prediction["height"],
+            )
+            http_post_event("object", event, self._session)
+            channel = self._session.data_channel
+            if channel:
+                DataChannelWrapper(channel, self._loop).send_json(event)
 
 
