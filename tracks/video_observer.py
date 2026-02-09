@@ -1,7 +1,7 @@
 import asyncio
 from aiortc import MediaStreamTrack
 from api.session import Session
-from config.constants import ROBOFLOW_API_KEY, ROBOFLOW_MODEL_ID
+from config import constants
 from events.video_events import VisionEvent
 from utils.emitter import DataChannelWrapper, http_post_event
 from video.frame_sampler import FrameSampler
@@ -13,10 +13,10 @@ class VideoObserverTrack(MediaStreamTrack):
     def __init__(self, source: MediaStreamTrack, session: Session):
         super().__init__()
         self._source = source
-        self._sampler = FrameSampler(fps=3)
+        self._sampler = FrameSampler(fps=constants.VIDEO_FPS)
         self._yolo = InferenceHTTPClient(
-            api_url="https://serverless.roboflow.com",
-            api_key=ROBOFLOW_API_KEY)
+            api_url=constants.ROBOFLOW_API_URL,
+            api_key=constants.ROBOFLOW_API_KEY)
         self._loop: asyncio.AbstractEventLoop = asyncio.get_running_loop()
         self._frame_index = 0
         self._session = session
@@ -40,7 +40,7 @@ class VideoObserverTrack(MediaStreamTrack):
 
 
     def _run_yolo(self, img, frame_index: int):
-        result = self._yolo.infer(img, model_id=ROBOFLOW_MODEL_ID)
+        result = self._yolo.infer(img, model_id=constants.ROBOFLOW_MODEL_ID)
         
         predictions = result.get("predictions")
         

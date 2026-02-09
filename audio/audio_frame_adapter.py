@@ -21,7 +21,12 @@ class AudioFrameAdapter:
 
 class PcmChunker:
 
-    def __init__(self, sample_rate=16000, frame_ms=20):
+    def __init__(self, sample_rate=None, frame_ms=None):
+        from config import constants
+        if sample_rate is None:
+            sample_rate = constants.AUDIO_SAMPLE_RATE
+        if frame_ms is None:
+            frame_ms = constants.AUDIO_FRAME_MS
         self.chunk_bytes = int(sample_rate * frame_ms / 1000) * 2
         self.buffer = bytearray()
 

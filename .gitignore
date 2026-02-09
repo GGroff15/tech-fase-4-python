@@ -30,6 +30,11 @@ ENV/
 .env
 .env.*
 
+# GCP Service Account Keys (sensitive credentials)
+*-firebase-adminsdk-*.json
+tech-fase-*.json
+service-account*.json
+
 # IDEs and editors
 .idea/
 .vscode/

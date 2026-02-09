@@ -1,8 +1,13 @@
 from collections import deque
+from config import constants
 
 
 class EmotionAudioBuffer:
-    def __init__(self, sample_rate=16_000, window_sec=1.0):
+    def __init__(self, sample_rate=None, window_sec=None):
+        if sample_rate is None:
+            sample_rate = constants.AUDIO_SAMPLE_RATE
+        if window_sec is None:
+            window_sec = constants.AUDIO_WINDOW_SEC
         self._bytes_per_sample = 2
         self._sample_rate = sample_rate
         self._window_sec = window_sec

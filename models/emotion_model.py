@@ -1,6 +1,7 @@
 import torch
 import numpy as np
 from transformers import Wav2Vec2FeatureExtractor, Wav2Vec2ForSequenceClassification
+from config import constants
 
 
 class SpeechEmotionModel:
@@ -8,10 +9,10 @@ class SpeechEmotionModel:
         self._device = "cuda" if torch.cuda.is_available() else "cpu"
 
         self._processor = Wav2Vec2FeatureExtractor.from_pretrained(
-            "prithivMLmods/Speech-Emotion-Classification"
+            constants.EMOTION_MODEL_ID
         )
         self._model = Wav2Vec2ForSequenceClassification.from_pretrained(
-            "prithivMLmods/Speech-Emotion-Classification"
+            constants.EMOTION_MODEL_ID
         ).to(self._device)
 
         self._model.eval()

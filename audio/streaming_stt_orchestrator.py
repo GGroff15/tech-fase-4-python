@@ -5,6 +5,7 @@ from typing import Callable, Optional
 
 from audio.emotion_buffer import AudioOverlapBuffer
 from audio.google_stt import GoogleStreamingSttSession
+from config import constants
 from events.audio_events import TranscriptionEvent
 
 logger = logging.getLogger("yolo_rest.audio.streaming_stt_orchestrator")
@@ -20,10 +21,14 @@ class StreamingSttOrchestrator:
 
     def __init__(
         self,
-        overlap_ms: int = 1000,
-        frame_ms: int = 20,
+        overlap_ms: int = None,
+        frame_ms: int = None,
         on_transcript: Optional[Callable[[TranscriptionEvent], None]] = None,
     ):
+        if overlap_ms is None:
+            overlap_ms = constants.AUDIO_OVERLAP_MS
+        if frame_ms is None:
+            frame_ms = constants.AUDIO_FRAME_MS
         self.overlap_chunks = overlap_ms // frame_ms
         self.overlap_buffer = AudioOverlapBuffer(self.overlap_chunks)
         self.on_transcript = on_transcript
@@ -31,7 +36,7 @@ class StreamingSttOrchestrator:
         self.current_session: Optional[GoogleStreamingSttSession] = None
         self.session_start_ts: Optional[float] = None
 
-        self.max_stream_duration = 240  # segundos (antes do limite real)
+        self.max_stream_duration = constants.STT_MAX_DURATION_SEC
 
     def _start_new_session(self):
         preload = self.overlap_buffer.get_overlap()

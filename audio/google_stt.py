@@ -4,6 +4,7 @@ import time
 from typing import Callable, Optional
 from google.cloud import speech_v1 as speech
 
+from config import constants
 from events.audio_events import TranscriptionEvent
 from utils.time_converter import epoch_to_iso_utc
 
@@ -30,16 +31,16 @@ class GoogleStreamingSttSession:
 
         self.recognition_config = speech.RecognitionConfig(
             encoding=speech.RecognitionConfig.AudioEncoding.LINEAR16,
-            sample_rate_hertz=16000,
-            language_code="pt-BR",
-            enable_automatic_punctuation=True,
-            model="latest_long",
+            sample_rate_hertz=constants.STT_SAMPLE_RATE,
+            language_code=constants.STT_LANGUAGE,
+            enable_automatic_punctuation=constants.STT_ENABLE_PUNCTUATION,
+            model=constants.STT_MODEL,
         )
 
         self.streaming_config = speech.StreamingRecognitionConfig(
             config=self.recognition_config,
             interim_results=True,
-            single_utterance=False,
+            single_utterance=constants.STT_SINGLE_UTTERANCE,
         )
 
     def _audio_generator(self):

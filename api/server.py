@@ -1,4 +1,5 @@
 import asyncio
+import logging
 from aiohttp import web
 from aiortc import RTCPeerConnection, RTCSessionDescription
 from api.session import SessionRegistry
@@ -6,6 +7,7 @@ from tracks.audio_observer import AudioObserverTrack
 from tracks.video_observer import VideoObserverTrack
 from config.constants import DETECTIONS_CHANNEL_LABEL
 
+logger = logging.getLogger("yolo_rest.api.server")
 
 session_registry = SessionRegistry()
 pcs: set[RTCPeerConnection] = set()
@@ -39,15 +41,15 @@ async def offer(request):
     
     @pc.on("connectionstatechange")
     async def on_connectionstatechange():
-        print(
-            f"🔄 [{correlation_id}] state = {pc.connectionState}"
+        logger.info(
+            f"Connection state change [{correlation_id}]: {pc.connectionState}"
         )
 
         if pc.connectionState in ("failed", "closed", "disconnected"):
             await pc.close()
             pcs.discard(pc)
             session_registry.close(correlation_id)
-            print(f"🔴 Session closed: {correlation_id}")
+            logger.info(f"Session closed: {correlation_id}")
 
     await pc.setRemoteDescription(offer)
     answer = await pc.createAnswer()

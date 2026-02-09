@@ -7,7 +7,7 @@ import requests
 from typing import Any
 
 from api.session import Session
-from config.constants import EVENT_FORWARD_BASE_URL, API_KEY
+from config.constants import EVENT_FORWARD_BASE_URL, API_KEY, HTTP_REQUEST_TIMEOUT_SEC
 
 logger = logging.getLogger("yolo_rest.utils.emitter")
 
@@ -26,7 +26,7 @@ def http_post_event(path: str, payload: Any, session: Session) -> None:
             "X-API-Key": API_KEY,
             "X-Correlation-Id": session.correlation_id
             }
-        requests.post(url, json=payload.to_dict(), headers=headers)
+        requests.post(url, json=payload.to_dict(), headers=headers, timeout=HTTP_REQUEST_TIMEOUT_SEC)
     except Exception as e:
         logger.error("http_post_event failed for %s: %s", url, e)
 
