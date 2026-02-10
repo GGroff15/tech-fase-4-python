@@ -86,3 +86,32 @@ jobs:
     outputs:
       image_url: ${{ steps.build-push.outputs.image_url }}
       image_tag: ${{ steps.image-tag.outputs.tag }}
+
+  deploy:
+    name: Deploy to Cloud Run
+    needs: build-and-push
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Authenticate to Google Cloud
+        id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Deploy to Cloud Run
+        run: |
+          gcloud run services update medical-triage-processor \
+            --image="${{ needs.build-and-push.outputs.image_url }}:${{ needs.build-and-push.outputs.image_tag }}" \
+            --region="${{ env.GCP_REGION }}" \
+            --platform=managed \
+            --allow-unauthenticated \
+            --quiet
