@@ -57,7 +57,7 @@ jobs:
         run: |
           IMAGE_URL="${{ secrets.GCP_ARTIFACT_REGISTRY }}/${{ env.IMAGE_NAME }}"
           
-          docker build -t "${IMAGE_URL}:${{ steps.image-tag.outputs.tag }}" .
+          docker build --progress=plain --no-cache -t "${IMAGE_URL}:${{ steps.image-tag.outputs.tag }}" .
           docker tag "${IMAGE_URL}:${{ steps.image-tag.outputs.tag }}" "${IMAGE_URL}:latest"
           docker tag "${IMAGE_URL}:${{ steps.image-tag.outputs.tag }}" "${IMAGE_URL}:${{ steps.image-tag.outputs.short_sha }}"
           
