@@ -58,3 +58,11 @@ runs/
 
 # Large model weights
 *.pt
+
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.*
+.terraform.lock.hcl
+*.tfvars
+!terraform.tfvars.example
