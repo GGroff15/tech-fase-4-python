@@ -5,12 +5,22 @@ FROM python:3.11-slim
 WORKDIR /app
 
 # Install system dependencies required for aiortc (WebRTC) and OpenCV
-# - libavformat-dev, libavcodec-dev, libavdevice-dev: FFmpeg libraries for video/audio codecs
-# - libopus-dev: Opus audio codec
-# - libvpx-dev: VP8/VP9 video codec
-# - libsrtp2-dev: Secure Real-time Transport Protocol
-# - build-essential: C/C++ compilers needed for some Python packages
-RUN apt-get update && apt-get install -y --no-install-recommends \
+# - libav* / codecs: FFmpeg libraries for video/audio
+# - libopus/libvpx/libsrtp2: codecs / SRTP for WebRTC
+# - build-essential: compilers for some Python wheels
+# - libgl1-mesa-glx / libglib2.0-0 / libsm6 / libxrender1 / libxext6: runtime libs needed by OpenCV
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Install small set first to surface any apt/CA issues early
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+       apt-utils \
+       ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+# Then install heavier codec / OpenCV runtime packages
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
     libavformat-dev \
     libavcodec-dev \
     libavdevice-dev \
@@ -18,8 +28,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libvpx-dev \
     libsrtp2-dev \
     build-essential \
-    libgl1-mesa-glx \
-    libglib2.0-0 \
+    libgl1 \
+       libglib2.0-0 \
+       libsm6 \
+       libxrender1 \
+       libxext6 \
+       ffmpeg \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements file
@@ -27,16 +41,10 @@ COPY requirements.txt .
 
 # Install Python dependencies
 # Use --no-cache-dir to reduce image size
-RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy application code
 COPY . .
-
-# Copy model files (YOLO weights)
-# These are already in the repo root, so they're copied with COPY . .
-# Explicitly ensure they're present (this is a no-op but documents the requirement)
-RUN test -f yolov8n.pt || echo "Warning: yolov8n.pt not found"
 
 # Cloud Run expects the application to listen on the PORT environment variable
 # Our application code uses config.constants.SERVER_PORT which reads from PORT env var
