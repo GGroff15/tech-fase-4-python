@@ -109,6 +109,6 @@ jobs:
 
       - name: Deploy to Cloud Run
         run: |
-          gcloud run services update medical-triage-processor \
+          gcloud run services update medical-agent-processor \
             --image="${{ needs.build-and-push.outputs.image_url }}:${{ needs.build-and-push.outputs.image_tag }}" \
             --region="${{ env.GCP_REGION }}"
