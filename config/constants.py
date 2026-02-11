@@ -64,6 +64,7 @@ STT_MAX_DURATION_SEC = int(os.getenv("STT_MAX_DURATION_SEC", "240"))  # Google S
 # EMOTION DETECTION MODEL
 # ============================================================================
 EMOTION_MODEL_ID = os.getenv("EMOTION_MODEL_ID", "prithivMLmods/Speech-Emotion-Classification")
+HUGGING_FACE_API_KEY = os.getenv("HUGGING_FACE_API_KEY", "")  # Optional: HuggingFace Hub authentication token for private models and rate limits
 
 # ============================================================================
 # SESSION CONFIGURATION
