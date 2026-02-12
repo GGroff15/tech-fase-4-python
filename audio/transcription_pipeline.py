@@ -1,5 +1,4 @@
 import logging
-import time
 from typing import Callable, Optional
 
 from audio.audio_frame_adapter import AudioFrameAdapter, PcmChunker
@@ -11,10 +10,6 @@ logger = logging.getLogger("yolo_rest.audio.transcription_pipeline")
 
 
 class RealtimeTranscriptionPipeline:
-    """
-    Pipeline completo:
-    WebRTC → PCM → VAD → Google STT (com overlap)
-    """
 
     def __init__(
         self,

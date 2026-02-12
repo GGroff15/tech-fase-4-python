@@ -1,4 +1,7 @@
+import logging
 from typing import Any, Dict, Mapping, Optional
+
+logger = logging.getLogger("yolo_rest.audio.emotion_adapter")
 
 CANONICAL_LABELS = [
     "neutral",
@@ -53,6 +56,7 @@ def canonical_label(raw_label: Optional[str]) -> Optional[str]:
     if s in SYNONYMS:
         return SYNONYMS[s]
 
+    logger.info(f"Unrecognized emotion label: {raw_label}")
     return None
 
 

@@ -47,11 +47,41 @@ resource "google_cloud_run_service" "medical-agent-processor" {
 }
 
 // Allow unauthenticated access if requested
-resource "google_cloud_run_service_iam_member" "invoker_all" {
+resource "google_cloud_run_service_iam_member" "medical_agent_processor_invoker_all" {
   count = var.allow_unauthenticated ? 1 : 0
   location = var.region
   project  = var.project_id
   service  = google_cloud_run_service.medical-agent-processor.name
+  role     = "roles/run.invoker"
+  member   = "allUsers"
+}
+
+resource "google_cloud_run_service" "medical-agent-api" {
+  name     = "medical-agent-api"
+  location = var.region
+
+  template {
+    spec {
+      service_account_name = google_service_account.medical-agent-api.email
+
+      containers {
+        image = var.cloud_run_image
+      }
+    }
+  }
+
+  traffic {
+    percent         = 100
+    latest_revision = true
+  }
+}
+
+// Allow unauthenticated access if requested
+resource "google_cloud_run_service_iam_member" "medical_agent_api_invoker_all" {
+  count = var.allow_unauthenticated ? 1 : 0
+  location = var.region
+  project  = var.project_id
+  service  = google_cloud_run_service.medical-agent-api.name
   role     = "roles/run.invoker"
   member   = "allUsers"
 }

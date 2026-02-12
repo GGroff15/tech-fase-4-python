@@ -9,10 +9,16 @@ variable "region" {
   default     = "us-central1"
 }
 
-variable "sa_name" {
+variable "medical-agent-processor_sa_name" {
   description = "Service account short id to create"
   type        = string
   default     = "medical-assistent-processor"
+}
+
+variable "medical-agent-api_sa_name" {
+  description = "Service account short id to create"
+  type        = string
+  default     = "medical-assistent-api"
 }
 
 variable "create_sa_key" {
@@ -41,6 +47,13 @@ variable "roboflow_api_key" {
 }
 
 variable "api_key" {
+  description = "Application API key to store in Secret Manager"
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
+variable "gemini_api_key" {
   description = "Application API key to store in Secret Manager"
   type        = string
   default     = ""

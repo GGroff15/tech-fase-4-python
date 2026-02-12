@@ -11,7 +11,7 @@ resource "google_project_service" "secretmanager" {
 
 // Service account for runtime
 resource "google_service_account" "medical-agent-processor" {
-  account_id   = var.sa_name
+  account_id   = var.medical-agent-processor_sa_name
   display_name = "Service account for yolo-rest runtime and STT access"
 }
 
@@ -22,8 +22,20 @@ resource "google_project_iam_member" "speech_client" {
   member  = "serviceAccount:${google_service_account.medical-agent-processor.email}"
 }
 
-resource "google_project_iam_member" "secret_accessor" {
+resource "google_project_iam_member" "medical_agent_processor_secret_accessor" {
   project = var.project_id
   role    = "roles/secretmanager.secretAccessor"
   member  = "serviceAccount:${google_service_account.medical-agent-processor.email}"
+}
+
+// Service account for runtime
+resource "google_service_account" "medical-agent-api" {
+  account_id   = var.medical-agent-api_sa_name
+  display_name = "Service account for yolo-rest runtime and STT access"
+}
+
+resource "google_project_iam_member" "medical_agent_api_secret_accessor" {
+  project = var.project_id
+  role    = "roles/secretmanager.secretAccessor"
+  member  = "serviceAccount:${google_service_account.medical-agent-api.email}"
 }

@@ -30,10 +30,11 @@ class AudioObserverTrack(MediaStreamTrack):
         self._pipeline = RealtimeTranscriptionPipeline(
             on_transcript=self._handle_transcript
         )
+        logger.info(f"AudioObserverTrack initialized for session: {session.correlation_id}")
 
     def _handle_transcript(self, event: TranscriptionEvent):
         """Callback invoked from Google STT thread with transcription results."""
-        logger.debug("Transcript received: text=%s, confidence=%.2f", event.text, event.confidence)
+        logger.info(f"[{self._session.correlation_id}] Transcript received: text={event.text}, confidence={event.confidence:.2f}")
         http_post_event("transcript", event, self._session)
 
     async def recv(self):
@@ -61,13 +62,15 @@ class AudioObserverTrack(MediaStreamTrack):
         """Call this when the track ends to cleanup resources."""
         super().stop()
         self._pipeline.close()
-        logger.debug("AudioObserverTrack stopped")
+        logger.info(f"AudioObserverTrack stopped for session: {self._session.correlation_id}")
 
     def _detect_emotion(self, window_pcm: bytes, offset_sec: float):
         if self._stream_start_monotonic is None:
             self._stream_start_monotonic = time.monotonic()
         
+        logger.info(f"[{self._session.correlation_id}] Running emotion detection on audio window")
         emotion, confidence = self._emotion_model.predict(window_pcm)
+        logger.info(f"[{self._session.correlation_id}] Emotion detected: emotion={emotion}, confidence={confidence:.2f}")
 
         absolute_epoch = (
             self._stream_start_monotonic

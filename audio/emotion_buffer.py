@@ -1,5 +1,8 @@
+import logging
 from collections import deque
 from config import constants
+
+logger = logging.getLogger("yolo_rest.audio.emotion_buffer")
 
 
 class EmotionAudioBuffer:
@@ -22,6 +25,7 @@ class EmotionAudioBuffer:
         self._buffered_sec += samples / self._sample_rate
 
         if len(self._buffer) >= self._target_size:
+            logger.info(f"Emotion audio window complete: buffered={self._buffered_sec:.2f}s, window={self._window_sec}s")
             window = bytes(self._buffer[:self._target_size])
 
             center_offset = self._buffered_sec - (self._window_sec / 2)

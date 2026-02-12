@@ -43,3 +43,25 @@ resource "google_secret_manager_secret_iam_member" "api_key_accessor" {
   role      = "roles/secretmanager.secretAccessor"
   member    = "serviceAccount:${google_service_account.medical-agent-processor.email}"
 }
+
+resource "google_secret_manager_secret" "gemini_api_key" {
+  count = length(var.gemini_api_key) > 0 ? 1 : 0
+
+  secret_id = "API_KEY"
+  replication {
+    auto {}
+  }
+}
+
+resource "google_secret_manager_secret_version" "gemini_api_key_version" {
+  count  = length(var.gemini_api_key) > 0 ? 1 : 0
+  secret = google_secret_manager_secret.gemini_api_key[0].id
+  secret_data = var.gemini_api_key
+}
+
+resource "google_secret_manager_secret_iam_member" "gemini_api_key_accessor" {
+  count = length(var.gemini_api_key) > 0 ? 1 : 0
+  secret_id = google_secret_manager_secret.gemini_api_key[0].id
+  role      = "roles/secretmanager.secretAccessor"
+  member    = "serviceAccount:${google_service_account.medical-agent-api.email}"
+}
