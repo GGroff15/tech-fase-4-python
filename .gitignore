@@ -29,11 +29,14 @@ ENV/
 # Environment variables
 .env
 .env.*
+!.env.example
 
 # GCP Service Account Keys (sensitive credentials)
 *-firebase-adminsdk-*.json
 tech-fase-*.json
 service-account*.json
+gcp-key.json
+*-gcp-*.json
 
 # IDEs and editors
 .idea/

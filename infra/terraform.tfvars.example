@@ -1,8 +1,0 @@
-project_id = "your-gcp-project-id"
-region     = "us-central1"
-sa_name    = "medical-assistent-processor"
-cloud_run_image = "gcr.io/${project_id}/yolo-rest:latest"
-allow_unauthenticated = true
-# Provide secrets via CLI or CI; do NOT commit real values.
-# roboflow_api_key = "REPLACE_ME"
-# api_key = "REPLACE_ME"
